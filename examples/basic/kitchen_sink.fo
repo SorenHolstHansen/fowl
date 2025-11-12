@@ -1,0 +1,27 @@
+pub enum Bar {
+	A,
+	B,
+}
+
+pub struct Foo {
+	a: int?,
+	b: float,
+	c: string,
+	d: bool,
+	e: Bar,
+}
+
+fn a(f: Foo) int throw string {
+	if let a = f.a {
+		return a;
+	}
+	throw "f.a is none";
+}
+
+fn main() void {
+	let something = 42;
+	let foo = Foo { a = none, b: 1.1, c: "hi there", d: true, e: Bar.A };
+	let my_a = try a(foo) catch e {};
+
+	println("This is my_a {my_a}. This is nested {"Hi {4 + 5}"}");
+}

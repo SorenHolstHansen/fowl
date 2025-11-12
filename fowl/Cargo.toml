@@ -1,0 +1,18 @@
+[package]
+name = "fowl"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/SorenHolstHansen/fowl"
+readme = "README.md"
+description = "A simple, explicit language"
+authors = ["Fowl contributors"]
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+codegen = { workspace = true }
+error = { workspace = true }
+lexer = { workspace = true }
+parser = { workspace = true }
+span = { workspace = true }
