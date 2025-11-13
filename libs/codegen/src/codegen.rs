@@ -1,6 +1,6 @@
 use ast::Program;
 use cranelift::prelude::*;
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{DataDescription, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::{fs::File, io::Write, path::Path, process::Command};
 use target_lexicon::Triple;
@@ -57,6 +57,13 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
     module
         .declare_function("fowl_std_io_print", Linkage::Import, &sig)
         .unwrap();
+
+    let id = module
+        .declare_data("some_string", Linkage::Export, true, false)
+        .unwrap();
+    let mut data_description = DataDescription::new();
+    data_description.define("hello, world!\0".as_bytes().to_vec().into_boxed_slice());
+    module.define_data(id, &data_description).unwrap();
 
     // First we declare our functions.
     // Adding which functions exist in the module and granting them their signatures.
