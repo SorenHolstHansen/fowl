@@ -11,6 +11,7 @@ ast = { path = "libs/ast" }
 codegen = { path = "libs/codegen" }
 error = { path = "libs/error" }
 lexer = { path = "libs/lexer" }
+logging = { path = "libs/logging" }
 module = { path = "libs/module" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }

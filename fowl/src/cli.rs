@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
 use error::emit_diagnostics;
 use lexer::{lexer_error::lexer_error_to_diagnostic, tokenize};
+use logging::init_logging;
 use parser::parser::parse;
 use std::{
     path::{Path, PathBuf},
@@ -38,13 +39,13 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Format OtterLang source code.
+    /// Format Fowl source code.
     Fmt {
-        /// Files to format (defaults to all .ot files in current directory)
+        /// Files to format (defaults to all .fo files in current directory)
         #[arg(default_value = ".")]
         paths: Vec<PathBuf>,
     },
-    // /// Profile OtterLang programs (memory or performance)
+    // /// Profile Fowl programs (memory or performance)
     // Profile {
     //     #[command(subcommand)]
     //     subcommand: crate::tools::profiler::ProfileCommand,
@@ -57,16 +58,12 @@ pub fn run() -> Result<()> {
 
     match &cli.command {
         Command::Run { path } => handle_run(path, settings),
-        _ => todo!(), // Command::Build { path, output } => handle_build(&cli, path, output.clone()),
-                      // Command::Repl => handle_repl(),
-                      // Command::Fmt { paths } => handle_fmt(paths),
-                      // Command::Profile { subcommand } => {
-                      //     crate::tools::profiler::run_profiler_subcommand(subcommand)
-                      // }
+        _ => todo!(),
     }
 }
 
 fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
+    init_logging();
     let source = std::fs::read_to_string(path)?;
     let stage = compile_pipeline(path, &source, settings)?;
 
@@ -75,6 +72,7 @@ fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
 
 fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<()> {
     // Lexing step
+    tracing::info!(?path, "Lexing");
     let (tokens, lexer_errors) = tokenize(source);
     emit_diagnostics(
         lexer_errors
@@ -90,6 +88,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     }
 
     // Parsing step
+    tracing::info!(?path, "Parsing");
     let (program, parser_errors) = parse(tokens);
     emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
     if settings.dump_ast {
@@ -102,11 +101,21 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     // Type checker step
 
     // Codegen step
+    tracing::info!(?path, "Codegen");
     let codegen_options = settings.codegen_options()?;
     let output = PathBuf::from("./.fowl/tmp_binary");
     build_executable(&program, &output, &codegen_options);
+    execute_binary(&output);
 
-    todo!()
+    Ok(())
+}
+
+fn execute_binary(path: &Path) {
+    tracing::info!(?path, "Running binary");
+    let mut command = std::process::Command::new(path);
+
+    let status = command.status().unwrap();
+    tracing::info!(?status, "Binary ran");
 }
 
 pub struct CompilerSettings {
