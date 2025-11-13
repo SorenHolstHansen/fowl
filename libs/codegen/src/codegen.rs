@@ -1,8 +1,10 @@
+use anyhow::bail;
 use ast::Program;
-use cranelift::prelude::*;
-use cranelift_module::{DataDescription, Linkage, Module};
+use cranelift::prelude::{isa::TargetIsa, *};
+use cranelift_codegen::{Context, ir::Type};
+use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::{fs::File, io::Write, path::Path, process::Command};
+use std::{fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
 
 pub struct CodegenOptions {
@@ -10,7 +12,185 @@ pub struct CodegenOptions {
     pub target: Option<Triple>,
 }
 
-pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptions) {
+struct Compiler {
+    isa: Arc<dyn TargetIsa>,
+    module: ObjectModule,
+    ctx: Context,
+    fctx: FunctionBuilderContext,
+}
+
+impl Compiler {
+    fn new(options: &CodegenOptions) -> Self {
+        let isa = {
+            let mut builder = settings::builder();
+
+            // disable optimizations so dissassembly will more directly correlated to our Cranelift usage
+            builder.set("opt_level", "none").unwrap();
+
+            builder.enable("is_pic").unwrap();
+
+            let flags = settings::Flags::new(builder);
+
+            isa::lookup(options.target.clone().unwrap_or(target_lexicon::HOST))
+                .unwrap()
+                .finish(flags)
+                .unwrap()
+        };
+        let module = {
+            let translation_unit_name = b"output_a_binary";
+            let libcall_names = cranelift_module::default_libcall_names();
+            let builder =
+                ObjectBuilder::new(isa.clone(), translation_unit_name, libcall_names).unwrap();
+            ObjectModule::new(builder)
+        };
+        let ctx = codegen::Context::new();
+        let fctx = FunctionBuilderContext::new();
+        Self {
+            isa,
+            module,
+            ctx,
+            fctx,
+        }
+    }
+
+    fn lower_program(&mut self, program: &Program) -> anyhow::Result<()> {
+        let functions: Vec<_> = program
+            .declarations
+            .iter()
+            .filter_map(|decl| match decl {
+                ast::Declaration::Function(function) => Some(function),
+                _ => None,
+            })
+            .collect();
+
+        if functions.is_empty() {
+            bail!("program contains no functions");
+        }
+
+        // First, declare all functions (without bodies)
+        for function in &functions {
+            self.declare_function(function)?;
+        }
+
+        // Then, lower the bodies of all functions
+        for function in &functions {
+            self.lower_function_body(function)?;
+        }
+
+        Ok(())
+    }
+
+    fn lower_function_body(&mut self, function: &ast::Function) -> anyhow::Result<()> {
+        let func_id = match self
+            .module
+            .declarations()
+            .get_name(function.name.inner)
+            .unwrap()
+        {
+            cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+            cranelift_module::FuncOrDataId::Data(data_id) => todo!(),
+        };
+        dbg!(func_id);
+        let func_decl = self.module.declarations().get_function_decl(func_id);
+        dbg!(func_decl);
+
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fctx);
+        builder.func.signature = main_signature(&*isa);
+
+        // Create the functions entry block.
+        let block0 = builder.create_block();
+        builder.switch_to_block(block0);
+
+        // When we know that there are no more other blocks which can jump to this block, we want to seal
+        // it. This improves the quality of code generation.
+        builder.seal_block(block0);
+
+        // Use the string locally
+        let sym = module
+            .declare_data("some_string", Linkage::Export, true, false)
+            .unwrap();
+        let local_id = module.declare_data_in_func(sym, builder.func);
+        let pointer = module.target_config().pointer_type();
+        let s = builder.ins().symbol_value(pointer, local_id);
+
+        // Call print
+        let local_callee = module.declare_func_in_func(print_id, builder.func);
+        let args = vec![s];
+        let call = builder.ins().call(local_callee, &args);
+        let inst_result = builder.inst_results(call);
+        dbg!(inst_result);
+
+        let one = builder.ins().iconst(types::I32, 1);
+        let two = builder.ins().iadd(one, one);
+
+        // Use the result of the addition as an exit code
+        builder.ins().return_(&[two]);
+
+        if let Err(err) = codegen::verify_function(builder.func, isa.as_ref()) {
+            panic!("verifier error: {err}");
+        }
+
+        builder.finalize();
+
+        println!("fn main:\n{}", &ctx.func);
+
+        module
+            .define_function(main_declaration_func_id, &mut ctx)
+            .unwrap();
+
+        ctx.clear();
+
+        Ok(())
+    }
+
+    fn declare_function(&mut self, function: &ast::Function) -> anyhow::Result<FuncId> {
+        let mut param_types = vec![];
+        for param in &function.params {
+            let ty = self.type_from_ast(&param.ty)?.expect("Can't use void here");
+            param_types.push(AbiParam::new(ty));
+        }
+
+        let ret_ty = if let Some(ty) = self.type_from_ast(&function.ret_ty)? {
+            vec![AbiParam::new(ty)]
+        } else {
+            vec![]
+        };
+
+        let call_conv = self.isa.default_call_conv();
+        let print_sig = Signature {
+            call_conv,
+            params: param_types,
+            returns: ret_ty,
+        };
+        let function_id = self
+            .module
+            .declare_function(function.name.inner, Linkage::Import, &print_sig)
+            .unwrap();
+
+        Ok(function_id)
+    }
+
+    fn type_from_ast(&self, ast_ty: &ast::Type) -> anyhow::Result<Option<Type>> {
+        match &ast_ty.kind {
+            ast::TypeKind::Ident(ident) => todo!(),
+            ast::TypeKind::Int => Ok(Some(types::I64)),
+            ast::TypeKind::Float => Ok(Some(types::F64)),
+            ast::TypeKind::String => Ok(Some(self.module.target_config().pointer_type())),
+            ast::TypeKind::Bool => Ok(Some(types::I8)),
+            ast::TypeKind::Void => Ok(None),
+            ast::TypeKind::Generic { base, args } => todo!(),
+        }
+    }
+}
+
+pub fn build_executable(
+    program: &Program,
+    output: &Path,
+    options: &CodegenOptions,
+) -> anyhow::Result<()> {
+    let mut compiler = Compiler::new(options);
+    compiler.lower_program(program)?;
+
     // The ISA contains information about our intended target and acts as the settings for cranelift.
     let isa = {
         let mut builder = settings::builder();
@@ -27,7 +207,6 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
             .finish(flags)
             .unwrap()
     };
-
     // Cranelift has the concept of a Module which ties declarations together.
     //
     // Module is actually a trait, and which implementation of this trait you use will depend on
@@ -192,6 +371,8 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
 
     let status = cc.status().unwrap();
     tracing::debug!(?status, "Object files linked");
+
+    Ok(())
 }
 
 fn main_signature(isa: &dyn isa::TargetIsa) -> Signature {
