@@ -46,24 +46,25 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
         ObjectModule::new(builder)
     };
 
+    // Setup "print" function
     let call_conv = isa.default_call_conv();
-
-    let ptr = module.target_config().pointer_type();
-    let sig = Signature {
+    let print_sig = Signature {
         call_conv,
-        params: vec![AbiParam::new(types::I32)],
+        params: vec![AbiParam::new(types::I64)],
         returns: vec![],
     };
-    module
-        .declare_function("fowl_std_io_print", Linkage::Import, &sig)
+    let print_id = module
+        .declare_function("fowl_std_io_print", Linkage::Import, &print_sig)
         .unwrap();
 
+    // Setup global string
     let id = module
         .declare_data("some_string", Linkage::Export, true, false)
         .unwrap();
     let mut data_description = DataDescription::new();
     data_description.define("hello, world!\0".as_bytes().to_vec().into_boxed_slice());
     module.define_data(id, &data_description).unwrap();
+    println!("DD {:?}", data_description);
 
     // First we declare our functions.
     // Adding which functions exist in the module and granting them their signatures.
@@ -97,6 +98,21 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
         // it. This improves the quality of code generation.
         builder.seal_block(block0);
 
+        // Use the string locally
+        let sym = module
+            .declare_data("some_string", Linkage::Export, true, false)
+            .unwrap();
+        let local_id = module.declare_data_in_func(sym, builder.func);
+        let pointer = module.target_config().pointer_type();
+        let s = builder.ins().symbol_value(pointer, local_id);
+
+        // Call print
+        let local_callee = module.declare_func_in_func(print_id, builder.func);
+        let args = vec![s];
+        let call = builder.ins().call(local_callee, &args);
+        let inst_result = builder.inst_results(call);
+        dbg!(inst_result);
+
         let one = builder.ins().iconst(types::I32, 1);
         let two = builder.ins().iadd(one, one);
 
@@ -108,6 +124,8 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
         }
 
         builder.finalize();
+
+        println!("fn main:\n{}", &ctx.func);
 
         module
             .define_function(main_declaration_func_id, &mut ctx)
