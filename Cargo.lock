@@ -167,6 +167,7 @@ dependencies = [
  "cranelift-module",
  "cranelift-object",
  "target-lexicon",
+ "tracing",
 ]
 
 [[package]]

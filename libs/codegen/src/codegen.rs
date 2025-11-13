@@ -46,6 +46,18 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
         ObjectModule::new(builder)
     };
 
+    let call_conv = isa.default_call_conv();
+
+    let ptr = module.target_config().pointer_type();
+    let sig = Signature {
+        call_conv,
+        params: vec![AbiParam::new(types::I32)],
+        returns: vec![],
+    };
+    module
+        .declare_function("fowl_std_io_print", Linkage::Import, &sig)
+        .unwrap();
+
     // First we declare our functions.
     // Adding which functions exist in the module and granting them their signatures.
     //
@@ -90,8 +102,6 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
 
         builder.finalize();
 
-        println!("fn main:\n{}", &ctx.func);
-
         module
             .define_function(main_declaration_func_id, &mut ctx)
             .unwrap();
@@ -114,7 +124,7 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
         let mut f = File::create(&object_path).unwrap();
         f.write_all(&bytes).unwrap();
 
-        println!(" wrote output to {output:?}");
+        tracing::info!("wrote object file to {output:?}");
     }
 
     let runtime_c = {
@@ -142,7 +152,6 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
 
         cc.arg(runtime_c).arg("-o").arg(&runtime_o);
 
-        dbg!(&cc);
         let cc_status = cc.status().unwrap();
 
         if !cc_status.success() {
@@ -157,7 +166,7 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
     let status = cc.status().unwrap();
-    dbg!(status);
+    tracing::debug!(?status, "Object files linked");
 }
 
 fn main_signature(isa: &dyn isa::TargetIsa) -> Signature {

@@ -139,6 +139,6 @@ pub fn emit_diagnostics<'source>(
                 .with_note("For more information, re-run with --debug to inspect tokens and AST.");
         }
 
-        let _ = report.finish().print((file, Source::from(source)));
+        let _ = report.finish().eprint((file, Source::from(source)));
     }
 }
