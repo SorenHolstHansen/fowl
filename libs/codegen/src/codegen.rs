@@ -2,8 +2,8 @@ use anyhow::bail;
 use ast::Program;
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{Context, ir::Type};
-use cranelift_module::{DataDescription, FuncId, Linkage, Module};
-use cranelift_object::{ObjectBuilder, ObjectModule};
+use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
 use std::{fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
 
@@ -53,6 +53,12 @@ impl Compiler {
         }
     }
 
+    fn finish(self) -> ObjectProduct {
+        // If we have additional information such as unwind information or DWARF debug information,
+        // they can be added to `Product`. For this example we skip such optional additions.
+        self.module.finish()
+    }
+
     fn lower_program(&mut self, program: &Program) -> anyhow::Result<()> {
         let functions: Vec<_> = program
             .declarations
@@ -88,58 +94,21 @@ impl Compiler {
             .unwrap()
         {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
-            cranelift_module::FuncOrDataId::Data(data_id) => todo!(),
+            cranelift_module::FuncOrDataId::Data(_) => todo!(),
         };
         dbg!(func_id);
         let func_decl = self.module.declarations().get_function_decl(func_id);
         dbg!(func_decl);
 
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fctx);
-        builder.func.signature = main_signature(&*isa);
+        let mut function_compiler =
+            FunctionCompiler::new(&mut self.ctx, &mut self.fctx, self.isa.clone());
+        function_compiler.compile(function)?;
+        function_compiler.finalize();
 
-        // Create the functions entry block.
-        let block0 = builder.create_block();
-        builder.switch_to_block(block0);
+        println!("fn main:\n{}", &self.ctx.func);
+        self.module.define_function(func_id, &mut self.ctx).unwrap();
 
-        // When we know that there are no more other blocks which can jump to this block, we want to seal
-        // it. This improves the quality of code generation.
-        builder.seal_block(block0);
-
-        // Use the string locally
-        let sym = module
-            .declare_data("some_string", Linkage::Export, true, false)
-            .unwrap();
-        let local_id = module.declare_data_in_func(sym, builder.func);
-        let pointer = module.target_config().pointer_type();
-        let s = builder.ins().symbol_value(pointer, local_id);
-
-        // Call print
-        let local_callee = module.declare_func_in_func(print_id, builder.func);
-        let args = vec![s];
-        let call = builder.ins().call(local_callee, &args);
-        let inst_result = builder.inst_results(call);
-        dbg!(inst_result);
-
-        let one = builder.ins().iconst(types::I32, 1);
-        let two = builder.ins().iadd(one, one);
-
-        // Use the result of the addition as an exit code
-        builder.ins().return_(&[two]);
-
-        if let Err(err) = codegen::verify_function(builder.func, isa.as_ref()) {
-            panic!("verifier error: {err}");
-        }
-
-        builder.finalize();
-
-        println!("fn main:\n{}", &ctx.func);
-
-        module
-            .define_function(main_declaration_func_id, &mut ctx)
-            .unwrap();
-
-        ctx.clear();
-
+        self.ctx.clear();
         Ok(())
     }
 
@@ -164,7 +133,7 @@ impl Compiler {
         };
         let function_id = self
             .module
-            .declare_function(function.name.inner, Linkage::Import, &print_sig)
+            .declare_function(function.name.inner, Linkage::Export, &print_sig)
             .unwrap();
 
         Ok(function_id)
@@ -172,13 +141,102 @@ impl Compiler {
 
     fn type_from_ast(&self, ast_ty: &ast::Type) -> anyhow::Result<Option<Type>> {
         match &ast_ty.kind {
-            ast::TypeKind::Ident(ident) => todo!(),
+            ast::TypeKind::Ident(_) => todo!(),
             ast::TypeKind::Int => Ok(Some(types::I64)),
             ast::TypeKind::Float => Ok(Some(types::F64)),
             ast::TypeKind::String => Ok(Some(self.module.target_config().pointer_type())),
             ast::TypeKind::Bool => Ok(Some(types::I8)),
             ast::TypeKind::Void => Ok(None),
-            ast::TypeKind::Generic { base, args } => todo!(),
+            ast::TypeKind::Generic { .. } => todo!(),
+        }
+    }
+}
+
+struct FunctionCompiler<'a> {
+    builder: FunctionBuilder<'a>,
+    isa: Arc<dyn TargetIsa>,
+}
+
+impl<'a> FunctionCompiler<'a> {
+    fn new(
+        ctx: &'a mut Context,
+        fctx: &'a mut FunctionBuilderContext,
+        isa: Arc<dyn TargetIsa>,
+    ) -> Self {
+        let builder = FunctionBuilder::new(&mut ctx.func, fctx);
+        Self { builder, isa }
+    }
+
+    fn compile(&mut self, function: &ast::Function) -> anyhow::Result<()> {
+        let call_conv = self.isa.default_call_conv();
+
+        self.builder.func.signature = Signature {
+            call_conv,
+            params: vec![],
+            // Since we're linking to libc, we can return the exit code from main.
+            returns: vec![AbiParam::new(types::I64)],
+        };
+
+        // Create the functions entry block.
+        let block0 = self.builder.create_block();
+        self.builder.switch_to_block(block0);
+
+        // When we know that there are no more other blocks which can jump to this block, we want to seal
+        // it. This improves the quality of code generation.
+        self.builder.seal_block(block0);
+
+        for statement in &function.body.statements {
+            self.lower_statement(statement)?;
+        }
+
+        if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
+            panic!("verifier error: {err}");
+        }
+
+        Ok(())
+    }
+
+    fn finalize(self) {
+        self.builder.finalize();
+    }
+
+    fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Value> {
+        match expr {
+            ast::Expr::IntLiteral(i) => {
+                let v = self.builder.ins().iconst(types::I64, *i);
+                Ok(v)
+            }
+            ast::Expr::FloatLiteral(_) => todo!(),
+            ast::Expr::BoolLiteral(_) => todo!(),
+            ast::Expr::StringLiteral(_) => todo!(),
+            ast::Expr::StringInterpolation(_) => todo!(),
+            ast::Expr::Ident(_) => todo!(),
+            ast::Expr::Binary { .. } => todo!(),
+            ast::Expr::Unary { .. } => todo!(),
+            ast::Expr::Call { .. } => todo!(),
+            ast::Expr::StructInstance { .. } => todo!(),
+            ast::Expr::Member { .. } => todo!(),
+        }
+    }
+
+    fn lower_statement(&mut self, statement: &ast::Statement) -> anyhow::Result<()> {
+        match statement {
+            ast::Statement::Let { .. } => todo!(),
+            ast::Statement::Return { expr, .. } => match expr {
+                None => {
+                    self.builder.ins().return_(&[]);
+                    Ok(())
+                }
+                Some(expr) => {
+                    let ret = self.eval_expr(expr)?;
+                    self.builder.ins().return_(&[ret]);
+                    Ok(())
+                }
+            },
+            ast::Statement::Function(_) => todo!(),
+            ast::Statement::Struct(_) => todo!(),
+            ast::Statement::Enum(_) => todo!(),
+            ast::Statement::Expr(_) => todo!(),
         }
     }
 }
@@ -190,134 +248,7 @@ pub fn build_executable(
 ) -> anyhow::Result<()> {
     let mut compiler = Compiler::new(options);
     compiler.lower_program(program)?;
-
-    // The ISA contains information about our intended target and acts as the settings for cranelift.
-    let isa = {
-        let mut builder = settings::builder();
-
-        // disable optimizations so dissassembly will more directly correlated to our Cranelift usage
-        builder.set("opt_level", "none").unwrap();
-
-        builder.enable("is_pic").unwrap();
-
-        let flags = settings::Flags::new(builder);
-
-        isa::lookup(options.target.clone().unwrap_or(target_lexicon::HOST))
-            .unwrap()
-            .finish(flags)
-            .unwrap()
-    };
-    // Cranelift has the concept of a Module which ties declarations together.
-    //
-    // Module is actually a trait, and which implementation of this trait you use will depend on
-    // what sort of environment you're generating code into.
-    //
-    // Our objective is to generate an ahead-of-time compiled binary.
-    // So; we use the `cranelift-object` crate which exposes `ObjectModule` as a Module implementation.
-    //
-    // Object refers to object files (`.o` on unix-like systems and `.obj` on Windows).
-    // These files contain unlinked machine code, and we can then use a 'linker' to merge them into our final executable.
-    let mut module = {
-        let translation_unit_name = b"output_a_binary";
-        let libcall_names = cranelift_module::default_libcall_names();
-        let builder =
-            ObjectBuilder::new(isa.clone(), translation_unit_name, libcall_names).unwrap();
-        ObjectModule::new(builder)
-    };
-
-    // Setup "print" function
-    let call_conv = isa.default_call_conv();
-    let print_sig = Signature {
-        call_conv,
-        params: vec![AbiParam::new(types::I64)],
-        returns: vec![],
-    };
-    let print_id = module
-        .declare_function("fowl_std_io_print", Linkage::Import, &print_sig)
-        .unwrap();
-
-    // Setup global string
-    let id = module
-        .declare_data("some_string", Linkage::Export, true, false)
-        .unwrap();
-    let mut data_description = DataDescription::new();
-    data_description.define("hello, world!\0".as_bytes().to_vec().into_boxed_slice());
-    module.define_data(id, &data_description).unwrap();
-    println!("DD {:?}", data_description);
-
-    // First we declare our functions.
-    // Adding which functions exist in the module and granting them their signatures.
-    //
-    // In this example there's only one function, the programs entrypoint.
-    let main_declaration_func_id = {
-        let sig = main_signature(&*isa);
-
-        // Add this function to our Module.
-        module
-            .declare_function("main", Linkage::Export, &sig)
-            .unwrap()
-    };
-
-    // Define the contents of our functions
-    {
-        // These contains the context needed for genering code for a function.
-        //
-        // It's a lot more efficient to construct them once, and then re-use them for all functions.
-        let mut ctx = codegen::Context::new();
-        let mut fctx = FunctionBuilderContext::new();
-
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fctx);
-        builder.func.signature = main_signature(&*isa);
-
-        // Create the functions entry block.
-        let block0 = builder.create_block();
-        builder.switch_to_block(block0);
-
-        // When we know that there are no more other blocks which can jump to this block, we want to seal
-        // it. This improves the quality of code generation.
-        builder.seal_block(block0);
-
-        // Use the string locally
-        let sym = module
-            .declare_data("some_string", Linkage::Export, true, false)
-            .unwrap();
-        let local_id = module.declare_data_in_func(sym, builder.func);
-        let pointer = module.target_config().pointer_type();
-        let s = builder.ins().symbol_value(pointer, local_id);
-
-        // Call print
-        let local_callee = module.declare_func_in_func(print_id, builder.func);
-        let args = vec![s];
-        let call = builder.ins().call(local_callee, &args);
-        let inst_result = builder.inst_results(call);
-        dbg!(inst_result);
-
-        let one = builder.ins().iconst(types::I32, 1);
-        let two = builder.ins().iadd(one, one);
-
-        // Use the result of the addition as an exit code
-        builder.ins().return_(&[two]);
-
-        if let Err(err) = codegen::verify_function(builder.func, isa.as_ref()) {
-            panic!("verifier error: {err}");
-        }
-
-        builder.finalize();
-
-        println!("fn main:\n{}", &ctx.func);
-
-        module
-            .define_function(main_declaration_func_id, &mut ctx)
-            .unwrap();
-
-        ctx.clear();
-    }
-
-    // Finalize the module to generate our `Product`.
-    //
-    // If we have additional information such as unwind information or DWARF debug information,
-    // they can be added to `Product`. For this example we skip such optional additions.
-    let product = module.finish();
+    let product = compiler.finish();
 
     // Generate the object file.
     let object_path = output.with_extension("o");
@@ -341,20 +272,9 @@ pub fn build_executable(
     let runtime_o = {
         let runtime_o = output.with_extension("runtime.o");
         let c_compiler = "cc"; // Or "clang"
-        let mut cc = Command::new(&c_compiler);
+        let mut cc = Command::new(c_compiler);
 
-        // Add target-specific compiler flags
-        cc.arg("-c");
-        // if runtime_triple.needs_pic() && !runtime_triple.is_windows() {
-        //     cc.arg("-fPIC");
-        // }
-        // Add target triple for cross-compilation (skip for native target)
-        // if !is_native_target {
-        //     let compiler_target_flag = preferred_target_flag(&c_compiler);
-        //     cc.arg(compiler_target_flag).arg(&triple_str);
-        // }
-
-        cc.arg(runtime_c).arg("-o").arg(&runtime_o);
+        cc.arg("-c").arg(runtime_c).arg("-o").arg(&runtime_o);
 
         let cc_status = cc.status().unwrap();
 
@@ -365,7 +285,7 @@ pub fn build_executable(
     };
 
     let linker = "cc"; // or "clang", or "wasm-ld"
-    let mut cc = Command::new(&linker);
+    let mut cc = Command::new(linker);
 
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
@@ -373,24 +293,6 @@ pub fn build_executable(
     tracing::debug!(?status, "Object files linked");
 
     Ok(())
-}
-
-fn main_signature(isa: &dyn isa::TargetIsa) -> Signature {
-    // The `CallConv` defines how primitives in parameters and return values are handled.
-    // Mainly which registers are used and when stack spills are used.
-    //
-    // In general it's best to use `CallConv::Fast`.
-    //
-    // However; since the function we define is invoked from our targetted OS, we need to use
-    // the calling convention the OS expects.
-    let call_conv = isa.default_call_conv();
-
-    Signature {
-        call_conv,
-        params: vec![],
-        // Since we're linking to libc, we can return the exit code from main.
-        returns: vec![AbiParam::new(types::I32)],
-    }
 }
 
 fn runtime_c_code() -> String {

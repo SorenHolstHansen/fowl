@@ -65,7 +65,7 @@ pub fn run() -> Result<()> {
 fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
     init_logging();
     let source = std::fs::read_to_string(path)?;
-    let stage = compile_pipeline(path, &source, settings)?;
+    compile_pipeline(path, &source, settings)?;
 
     Ok(())
 }
@@ -104,7 +104,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     tracing::info!(?path, "Codegen");
     let codegen_options = settings.codegen_options()?;
     let output = PathBuf::from("./.fowl/tmp_binary");
-    build_executable(&program, &output, &codegen_options);
+    build_executable(&program, &output, &codegen_options)?;
     execute_binary(&output);
 
     Ok(())

@@ -1,16 +1,3 @@
-pub enum Bar {
-	A,
-	B,
-}
-
-pub struct Foo {
-	a: int,
-	b: float,
-	c: string,
-	d: bool,
-	e: Bar,
-}
-
-fn main() void {
-	let something = 42;
+fn main() int {
+	return 4;
 }

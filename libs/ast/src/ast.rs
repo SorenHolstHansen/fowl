@@ -130,7 +130,9 @@ pub enum Expr<'source> {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
-    StringLiteral(&'source str),
+    /// None if empty string
+    StringLiteral(Option<&'source str>),
+    StringInterpolation(Vec<Expr<'source>>),
     Ident(Ident<'source>),
     Binary {
         op: BinaryOp,
@@ -256,6 +258,7 @@ pub enum Statement<'source> {
     // Type definitions
     Struct(Struct<'source>),
     Enum(Enum<'source>),
+    Expr(Expr<'source>),
 }
 
 #[derive(Debug, Clone)]

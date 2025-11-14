@@ -343,13 +343,16 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_statement(&mut self) -> Result<Statement<'source>, Diagnostic> {
-        let Some((token, span)) = self.tokens.next() else {
+        let Some((token, span)) = self.tokens.peek() else {
             todo!("Need an EOF span")
         };
-        let statement_span = Span::from(span);
+        let statement_span = Span::from(span.clone());
 
         match token {
             Token::Let => {
+                // Skip the peeked 'let'
+                self.tokens.next();
+
                 // Check if there is a mut
                 let mutable = if let Some((Token::Mut, _)) = self.tokens.peek() {
                     self.tokens.next();
@@ -386,6 +389,7 @@ impl<'source> Parser<'source> {
             Token::Return => {
                 // Skip the peeked "return"
                 self.tokens.next();
+
                 let rhs = self.parse_expression(1)?;
                 let (_, span) = self.expect_token(Token::Semicolon)?;
                 Ok(Statement::Return {
@@ -393,9 +397,14 @@ impl<'source> Parser<'source> {
                     expr: Some(rhs),
                 })
             }
+            Token::Ident(_) => {
+                let expr = self.parse_expression(0)?;
+                self.expect_token(Token::Semicolon)?;
+                Ok(Statement::Expr(expr))
+            }
             t => Err(Diagnostic::error(
                 statement_span,
-                format!("Unexpected token {}", t),
+                format!("Unexpected token {:?}. Expected statement start.", t),
             )),
         }
     }
@@ -414,6 +423,35 @@ impl<'source> Parser<'source> {
 
         Ok(statements)
     }
+
+    pub fn parse_string_literal_or_interpolation(
+        &mut self,
+        parts: Vec<(Token<'source>, Range<usize>)>,
+    ) -> Result<Expr<'source>, Diagnostic> {
+        if parts.is_empty() {
+            return Ok(Expr::StringLiteral(None));
+        }
+        let mut string_interpolation_parser = Parser {
+            tokens: parts.into_iter().peekable(),
+            errors: vec![],
+        };
+
+        let mut exprs = Vec::new();
+        while string_interpolation_parser.tokens.peek().is_some() {
+            let e = string_interpolation_parser.parse_expression(0)?;
+            exprs.push(e);
+        }
+
+        if exprs.len() == 1 {
+            let first = exprs.first().expect("Must be there by the if check");
+            if let Expr::StringLiteral(_) = first {
+                return Ok(first.clone());
+            }
+        }
+
+        Ok(Expr::StringInterpolation(exprs))
+    }
+
     pub fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
         let Some((token, span)) = self.tokens.next() else {
             todo!("Need an EOF span")
@@ -429,7 +467,10 @@ impl<'source> Parser<'source> {
                 inner: ident,
                 span: expr_span,
             }),
-            // Token::StringLiteral(s) => Expr::String,
+            Token::StringLiteralOrInterpolation(s) => {
+                self.parse_string_literal_or_interpolation(s)?
+            }
+            Token::StringFragment(s) => Expr::StringLiteral(Some(s)),
             t => {
                 return Err(Diagnostic::error(
                     expr_span,

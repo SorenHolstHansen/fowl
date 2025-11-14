@@ -1,5 +1,5 @@
 use crate::lexer_error::LexerError;
-use logos::{Lexer, Logos};
+use logos::{Lexer, Logos, Span};
 
 #[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(error(LexerError<'s>, LexerError::from_lexer))]
@@ -30,8 +30,6 @@ pub enum Token<'source> {
     Pub,
     #[token("match")]
     Match,
-    #[token("print")]
-    Print,
     #[token("None")]
     None,
     #[token("try")]
@@ -78,7 +76,7 @@ pub enum Token<'source> {
 
     StringFragment(&'source str),
     #[token("\"", string_literal_definition)]
-    StringLiteral(Vec<Token<'source>>),
+    StringLiteralOrInterpolation(Vec<(Token<'source>, Span)>),
 
     // Structural
     #[token(":")]
@@ -164,7 +162,6 @@ impl std::fmt::Display for Token<'_> {
             Token::Use => write!(f, "use"),
             Token::Pub => write!(f, "pub"),
             Token::Match => write!(f, "match"),
-            Token::Print => write!(f, "print"),
             Token::None => write!(f, "none"),
             Token::Try => write!(f, "try"),
             Token::Catch => write!(f, "catch"),
@@ -184,12 +181,12 @@ impl std::fmt::Display for Token<'_> {
             Token::FloatLiteral(fl) => write!(f, "{}", fl),
             Token::BoolLiteral(b) => write!(f, "{}", b),
             Token::StringFragment(s) => write!(f, "{}", s),
-            Token::StringLiteral(tokens) => write!(
+            Token::StringLiteralOrInterpolation(tokens) => write!(
                 f,
                 "{}",
                 tokens
                     .iter()
-                    .map(|t| t.to_string())
+                    .map(|t| t.0.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -234,23 +231,23 @@ enum StringContext<'source> {
     #[regex(r#"[^"{}]+"#)]
     Content,
     #[token("{", evaluate_interpolation)]
-    InterpolationStart(Vec<Token<'source>>),
+    InterpolationStart(Vec<(Token<'source>, Span)>),
 }
 
 fn evaluate_interpolation<'source>(
     lex: &mut Lexer<'source, StringContext<'source>>,
-) -> Vec<Token<'source>> {
+) -> Vec<(Token<'source>, Span)> {
     let mut token_lexer = lex.clone().morph::<Token>();
     let mut res = vec![];
 
     while let Some(Ok(token)) = token_lexer.next() {
         match token {
-            Token::StringLiteral(mut tokens) => res.append(&mut tokens),
+            Token::StringLiteralOrInterpolation(mut tokens) => res.append(&mut tokens),
             Token::RBrace => {
-                res.push(Token::RBrace);
+                res.push((Token::RBrace, token_lexer.span()));
                 break;
             }
-            token => res.push(token),
+            token => res.push((token, token_lexer.span())),
         }
     }
 
@@ -261,7 +258,7 @@ fn evaluate_interpolation<'source>(
 
 fn string_literal_definition<'source>(
     lex: &mut Lexer<'source, Token<'source>>,
-) -> Vec<Token<'source>> {
+) -> Vec<(Token<'source>, Span)> {
     let mut string_lexer = lex.clone().morph::<StringContext<'source>>();
 
     let mut res = vec![];
@@ -270,10 +267,10 @@ fn string_literal_definition<'source>(
             StringContext::Quote => break,
             StringContext::Content => {
                 let slice = string_lexer.slice();
-                res.push(Token::StringFragment(slice))
+                res.push((Token::StringFragment(slice), string_lexer.span()))
             }
             StringContext::InterpolationStart(mut tokens) => {
-                res.push(Token::LBrace);
+                res.push((Token::LBrace, string_lexer.span()));
                 res.append(&mut tokens)
             }
         }
