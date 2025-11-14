@@ -126,6 +126,12 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
+pub struct Call<'source> {
+    pub callee: Box<Expr<'source>>,
+    pub args: Vec<Expr<'source>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr<'source> {
     IntLiteral(i64),
     FloatLiteral(f64),
@@ -145,10 +151,7 @@ pub enum Expr<'source> {
         expr: Box<Expr<'source>>,
     },
 
-    Call {
-        func: Box<Expr<'source>>,
-        args: Vec<Expr<'source>>,
-    },
+    Call(Call<'source>),
     StructInstance {
         name: Ident<'source>,
         fields: Vec<(Ident<'source>, Expr<'source>)>, // field name -> value

@@ -2,7 +2,7 @@ use anyhow::bail;
 use ast::Program;
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{Context, ir::Type};
-use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
 use std::{fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
@@ -73,6 +73,17 @@ impl Compiler {
             bail!("program contains no functions");
         }
 
+        // register "print" function
+        let call_conv = self.isa.default_call_conv();
+        let print_sig = Signature {
+            call_conv,
+            params: vec![AbiParam::new(types::I64)],
+            returns: vec![],
+        };
+        self.module
+            .declare_function("fowl_std_io_print", Linkage::Import, &print_sig)
+            .unwrap();
+
         // First, declare all functions (without bodies)
         for function in &functions {
             self.declare_function(function)?;
@@ -96,12 +107,13 @@ impl Compiler {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
         };
-        dbg!(func_id);
-        let func_decl = self.module.declarations().get_function_decl(func_id);
-        dbg!(func_decl);
 
-        let mut function_compiler =
-            FunctionCompiler::new(&mut self.ctx, &mut self.fctx, self.isa.clone());
+        let mut function_compiler = FunctionCompiler::new(
+            &mut self.ctx,
+            &mut self.fctx,
+            self.isa.clone(),
+            &mut self.module,
+        );
         function_compiler.compile(function)?;
         function_compiler.finalize();
 
@@ -126,14 +138,14 @@ impl Compiler {
         };
 
         let call_conv = self.isa.default_call_conv();
-        let print_sig = Signature {
+        let sig = Signature {
             call_conv,
             params: param_types,
             returns: ret_ty,
         };
         let function_id = self
             .module
-            .declare_function(function.name.inner, Linkage::Export, &print_sig)
+            .declare_function(function.name.inner, Linkage::Export, &sig)
             .unwrap();
 
         Ok(function_id)
@@ -155,6 +167,7 @@ impl Compiler {
 struct FunctionCompiler<'a> {
     builder: FunctionBuilder<'a>,
     isa: Arc<dyn TargetIsa>,
+    module: &'a mut ObjectModule,
 }
 
 impl<'a> FunctionCompiler<'a> {
@@ -162,9 +175,14 @@ impl<'a> FunctionCompiler<'a> {
         ctx: &'a mut Context,
         fctx: &'a mut FunctionBuilderContext,
         isa: Arc<dyn TargetIsa>,
+        module: &'a mut ObjectModule,
     ) -> Self {
         let builder = FunctionBuilder::new(&mut ctx.func, fctx);
-        Self { builder, isa }
+        Self {
+            builder,
+            isa,
+            module,
+        }
     }
 
     fn compile(&mut self, function: &ast::Function) -> anyhow::Result<()> {
@@ -200,20 +218,60 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.finalize();
     }
 
-    fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Value> {
+    fn eval_call(&mut self, call: &ast::Call) -> anyhow::Result<Option<Value>> {
+        match &*call.callee {
+            ast::Expr::Ident(ident) => {
+                let func_id = match self.module.declarations().get_name(ident.inner).unwrap() {
+                    cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+                    cranelift_module::FuncOrDataId::Data(_) => todo!(),
+                };
+                let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
+                let mut args = Vec::with_capacity(call.args.len());
+                for arg in &call.args {
+                    args.push(
+                        self.eval_expr(arg)?
+                            .expect("Should have been caught in type checking, that this is void"),
+                    );
+                }
+                let call = self.builder.ins().call(local_callee, &args);
+                let inst_results = self.builder.inst_results(call);
+                Ok(inst_results.first().cloned())
+                // gn
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Option<Value>> {
         match expr {
             ast::Expr::IntLiteral(i) => {
                 let v = self.builder.ins().iconst(types::I64, *i);
-                Ok(v)
+                Ok(Some(v))
             }
             ast::Expr::FloatLiteral(_) => todo!(),
             ast::Expr::BoolLiteral(_) => todo!(),
-            ast::Expr::StringLiteral(_) => todo!(),
+            ast::Expr::StringLiteral(s) => {
+                let s = s.unwrap_or_default();
+                let name = format!("{}", s.len());
+                // Setup global string
+                let id = self
+                    .module
+                    .declare_data(&name, Linkage::Export, true, false)
+                    .unwrap();
+                let mut data_description = DataDescription::new();
+                data_description.define(s.as_bytes().to_vec().into_boxed_slice());
+                self.module.define_data(id, &data_description).unwrap();
+
+                let local_id = self.module.declare_data_in_func(id, self.builder.func);
+                let pointer = self.module.target_config().pointer_type();
+                let s = self.builder.ins().symbol_value(pointer, local_id);
+                Ok(Some(s))
+            }
             ast::Expr::StringInterpolation(_) => todo!(),
             ast::Expr::Ident(_) => todo!(),
             ast::Expr::Binary { .. } => todo!(),
             ast::Expr::Unary { .. } => todo!(),
-            ast::Expr::Call { .. } => todo!(),
+            ast::Expr::Call(call) => self.eval_call(call),
             ast::Expr::StructInstance { .. } => todo!(),
             ast::Expr::Member { .. } => todo!(),
         }
@@ -228,7 +286,9 @@ impl<'a> FunctionCompiler<'a> {
                     Ok(())
                 }
                 Some(expr) => {
-                    let ret = self.eval_expr(expr)?;
+                    let ret = self
+                        .eval_expr(expr)?
+                        .expect("Should have been caught in type checking, that this is void");
                     self.builder.ins().return_(&[ret]);
                     Ok(())
                 }
@@ -236,7 +296,10 @@ impl<'a> FunctionCompiler<'a> {
             ast::Statement::Function(_) => todo!(),
             ast::Statement::Struct(_) => todo!(),
             ast::Statement::Enum(_) => todo!(),
-            ast::Statement::Expr(_) => todo!(),
+            ast::Statement::Expr(expr) => {
+                self.eval_expr(expr)?;
+                Ok(())
+            }
         }
     }
 }

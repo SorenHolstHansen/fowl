@@ -1,6 +1,6 @@
 use ast::{
-    Block, Declaration, Enum, EnumVariant, Expr, Function, Ident, Op, Param, Program, Statement,
-    Struct, Type, TypeKind,
+    Block, Call, Declaration, Enum, EnumVariant, Expr, Function, Ident, Op, Param, Program,
+    Statement, Struct, Type, TypeKind,
 };
 use error::Diagnostic;
 use lexer::Token;
@@ -516,10 +516,10 @@ impl<'source> Parser<'source> {
                 self.tokens.next();
 
                 lhs = match op {
-                    Op::Call => Expr::Call {
-                        func: Box::new(lhs),
+                    Op::Call => Expr::Call(Call {
+                        callee: Box::new(lhs),
                         args: self.parse_fn_call_arguments()?,
-                    },
+                    }),
                     Op::StructInstance => {
                         let struct_name = self.parse_ident()?;
                         let struct_fields = self.parse_struct_fields()?;
