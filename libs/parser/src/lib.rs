@@ -9,7 +9,8 @@ mod test {
     fn test_parser() {
         let source = include_str!("../../../examples/basic/kitchen_sink.fo");
 
-        let (tokens, _) = tokenize(source);
-        let (program, parser_errors) = parser::parse(tokens);
+        let (lexer, _) = tokenize(source);
+        let (program, parser_errors) = parser::parse(lexer);
+        dbg!(program);
     }
 }

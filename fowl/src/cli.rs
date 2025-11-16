@@ -73,7 +73,7 @@ fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
 fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<()> {
     // Lexing step
     tracing::info!(?path, "Lexing");
-    let (tokens, lexer_errors) = tokenize(source);
+    let (lexer, lexer_errors) = tokenize(source);
     emit_diagnostics(
         lexer_errors
             .iter()
@@ -82,14 +82,12 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     );
     if settings.dump_tokens {
         println!("\n== Tokens ==");
-        for (token, span) in &tokens {
-            println!("  {:?} @ {:?}", token, span);
-        }
+        println!("{}", lexer);
     }
 
     // Parsing step
     tracing::info!(?path, "Parsing");
-    let (program, parser_errors) = parse(tokens);
+    let (program, parser_errors) = parse(lexer);
     emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
     if settings.dump_ast {
         println!("\n== AST ==");

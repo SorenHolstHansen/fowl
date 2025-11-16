@@ -1,5 +1,6 @@
 use crate::lexer_error::LexerError;
-use logos::{Lexer, Logos, Span};
+use logos::{Lexer, Logos};
+use span::Span;
 
 #[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(error(LexerError<'s>, LexerError::from_lexer))]
@@ -176,14 +177,14 @@ impl std::fmt::Display for Token<'_> {
             Token::String => write!(f, "string"),
             Token::Bool => write!(f, "bool"),
             Token::Void => write!(f, "void"),
-            Token::Ident(i) => write!(f, "{}", i),
-            Token::IntLiteral(i) => write!(f, "{}", i),
-            Token::FloatLiteral(fl) => write!(f, "{}", fl),
-            Token::BoolLiteral(b) => write!(f, "{}", b),
-            Token::StringFragment(s) => write!(f, "{}", s),
+            Token::Ident(i) => write!(f, "Ident({})", i),
+            Token::IntLiteral(i) => write!(f, "IntLiteral({})", i),
+            Token::FloatLiteral(fl) => write!(f, "FloatLiteral({})", fl),
+            Token::BoolLiteral(b) => write!(f, "BoolLiteral{}", b),
+            Token::StringFragment(s) => write!(f, "StringFragment(\"{}\")", s),
             Token::StringLiteralOrInterpolation(tokens) => write!(
                 f,
-                "{}",
+                "StringLiteralOrInterpolation({})",
                 tokens
                     .iter()
                     .map(|t| t.0.to_string())
@@ -244,10 +245,10 @@ fn evaluate_interpolation<'source>(
         match token {
             Token::StringLiteralOrInterpolation(mut tokens) => res.append(&mut tokens),
             Token::RBrace => {
-                res.push((Token::RBrace, token_lexer.span()));
+                res.push((Token::RBrace, token_lexer.span().into()));
                 break;
             }
-            token => res.push((token, token_lexer.span())),
+            token => res.push((token, token_lexer.span().into())),
         }
     }
 
@@ -267,10 +268,10 @@ fn string_literal_definition<'source>(
             StringContext::Quote => break,
             StringContext::Content => {
                 let slice = string_lexer.slice();
-                res.push((Token::StringFragment(slice), string_lexer.span()))
+                res.push((Token::StringFragment(slice), string_lexer.span().into()))
             }
             StringContext::InterpolationStart(mut tokens) => {
-                res.push((Token::LBrace, string_lexer.span()));
+                res.push((Token::LBrace, string_lexer.span().into()));
                 res.append(&mut tokens)
             }
         }
