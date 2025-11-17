@@ -358,7 +358,7 @@ impl<'a> FunctionCompiler<'a> {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
-                ast::Expr::Ident(ident) => {
+                ast::Expr::Ident(_) => {
                     // TODO: Check the type of ident
                     v = self.format_int_fn(v)?;
                 }
@@ -380,7 +380,7 @@ impl<'a> FunctionCompiler<'a> {
                 // let ty = type_from_ast(&ty.clone().expect("This can't be void"), &self.module)?
                 //     .expect("This can't be void");
                 let var = self.builder.declare_var(
-                    // TODO: get the type from type-checking
+                    // TODO: get the type from type-checking, or look it up some place
                     types::I64,
                 );
                 self.builder.def_var(var, value);

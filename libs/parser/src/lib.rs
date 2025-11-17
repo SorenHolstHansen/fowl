@@ -10,7 +10,7 @@ mod test {
         let source = include_str!("../../../examples/basic/kitchen_sink.fo");
 
         let (lexer, _) = tokenize(source);
-        let (program, parser_errors) = parser::parse(lexer);
+        let (program, _) = parser::parse(lexer);
         dbg!(program);
     }
 }

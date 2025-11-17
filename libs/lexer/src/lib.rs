@@ -1,6 +1,6 @@
 use itertools::{Either, Itertools};
 use span::Span;
-use std::{iter::Peekable, vec::IntoIter};
+use std::{fmt::Write, iter::Peekable, vec::IntoIter};
 mod token;
 use crate::lexer_error::LexerError;
 pub use token::Token;
@@ -40,13 +40,32 @@ impl<'source> Lexer<'source> {
     }
 }
 
-impl<'source> std::fmt::Display for Lexer<'source> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (token, span) in self.clone() {
-            writeln!(f, "{:8} {}", span.to_string(), token)?
-        }
+impl<'source> Lexer<'source> {
+    pub fn pretty_string(self) -> String {
+        let mut buf = String::new();
+        pretty_print_tokens(self.tokens.collect_vec(), 0, &mut buf);
+        buf
+    }
+}
 
-        Ok(())
+fn pretty_print_tokens(tokens: Vec<(Token, Span)>, indent: usize, buf: &mut String) {
+    let ind = indent * 2;
+    for (token, span) in tokens {
+        if let Token::StringLiteralOrInterpolation(tokens) = token {
+            buf.write_fmt(format_args!("{:ind$}-> STRING INTERPOLATION\n", ""))
+                .unwrap();
+            pretty_print_tokens(tokens, indent + 1, buf);
+            buf.write_fmt(format_args!("{:ind$}<- STRING INTERPOLATION\n", ""))
+                .unwrap();
+        } else {
+            buf.write_fmt(format_args!(
+                "{:ind$}{:8} {}\n",
+                "",
+                span.to_string(),
+                token
+            ))
+            .unwrap();
+        }
     }
 }
 

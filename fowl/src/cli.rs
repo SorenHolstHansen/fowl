@@ -83,7 +83,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     );
     if settings.dump_tokens {
         println!("\n== Tokens ==");
-        println!("{}", lexer);
+        println!("{}", lexer.clone().pretty_string());
     }
 
     // Parsing step
