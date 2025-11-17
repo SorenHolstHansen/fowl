@@ -4,7 +4,7 @@ use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{Context, ir::Type};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
-use std::{fs::File, io::Write, path::Path, process::Command, sync::Arc};
+use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
 
 pub struct CodegenOptions {
@@ -154,11 +154,11 @@ impl Compiler {
     fn declare_function(&mut self, function: &ast::Function) -> anyhow::Result<FuncId> {
         let mut param_types = vec![];
         for param in &function.params {
-            let ty = self.type_from_ast(&param.ty)?.expect("Can't use void here");
+            let ty = type_from_ast(&param.ty, &self.module)?.expect("Can't use void here");
             param_types.push(AbiParam::new(ty));
         }
 
-        let ret_ty = if let Some(ty) = self.type_from_ast(&function.ret_ty)? {
+        let ret_ty = if let Some(ty) = type_from_ast(&function.ret_ty, &self.module)? {
             vec![AbiParam::new(ty)]
         } else {
             vec![]
@@ -177,17 +177,17 @@ impl Compiler {
 
         Ok(function_id)
     }
+}
 
-    fn type_from_ast(&self, ast_ty: &ast::Type) -> anyhow::Result<Option<Type>> {
-        match &ast_ty.kind {
-            ast::TypeKind::Ident(_) => todo!(),
-            ast::TypeKind::Int => Ok(Some(types::I64)),
-            ast::TypeKind::Float => Ok(Some(types::F64)),
-            ast::TypeKind::String => Ok(Some(self.module.target_config().pointer_type())),
-            ast::TypeKind::Bool => Ok(Some(types::I8)),
-            ast::TypeKind::Void => Ok(None),
-            ast::TypeKind::Generic { .. } => todo!(),
-        }
+fn type_from_ast(ast_ty: &ast::Type, module: &ObjectModule) -> anyhow::Result<Option<Type>> {
+    match &ast_ty.kind {
+        ast::TypeKind::Ident(_) => todo!(),
+        ast::TypeKind::Int => Ok(Some(types::I64)),
+        ast::TypeKind::Float => Ok(Some(types::F64)),
+        ast::TypeKind::String => Ok(Some(module.target_config().pointer_type())),
+        ast::TypeKind::Bool => Ok(Some(types::I8)),
+        ast::TypeKind::Void => Ok(None),
+        ast::TypeKind::Generic { .. } => todo!(),
     }
 }
 
@@ -195,6 +195,7 @@ struct FunctionCompiler<'a> {
     builder: FunctionBuilder<'a>,
     isa: Arc<dyn TargetIsa>,
     module: &'a mut ObjectModule,
+    variables: HashMap<String, Variable>,
 }
 
 impl<'a> FunctionCompiler<'a> {
@@ -209,6 +210,7 @@ impl<'a> FunctionCompiler<'a> {
             builder,
             isa,
             module,
+            variables: HashMap::new(),
         }
     }
 
@@ -307,7 +309,11 @@ impl<'a> FunctionCompiler<'a> {
                 let v = self.eval_string_interpolation(parts)?;
                 Ok(Some(v))
             }
-            ast::Expr::Ident(_) => todo!(),
+            ast::Expr::Ident(ident) => {
+                let var = self.variables.get(&ident.inner.to_string()).unwrap();
+                let v = self.builder.use_var(var.clone());
+                Ok(Some(v))
+            }
             ast::Expr::Binary { .. } => todo!(),
             ast::Expr::Unary { .. } => todo!(),
             ast::Expr::Call(call) => self.eval_call(call),
@@ -352,6 +358,10 @@ impl<'a> FunctionCompiler<'a> {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
+                ast::Expr::Ident(ident) => {
+                    // TODO: Check the type of ident
+                    v = self.format_int_fn(v)?;
+                }
                 _ => {}
             }
             let new_result = self.strcat(result_ptr, v)?;
@@ -363,7 +373,20 @@ impl<'a> FunctionCompiler<'a> {
 
     fn lower_statement(&mut self, statement: &ast::Statement) -> anyhow::Result<()> {
         match statement {
-            ast::Statement::Let { .. } => todo!(),
+            ast::Statement::Let { name, expr, .. } => {
+                let value = self
+                    .eval_expr(expr)?
+                    .expect("This should exist. Probably didn't typecheck for void");
+                // let ty = type_from_ast(&ty.clone().expect("This can't be void"), &self.module)?
+                //     .expect("This can't be void");
+                let var = self.builder.declare_var(
+                    // TODO: get the type from type-checking
+                    types::I64,
+                );
+                self.builder.def_var(var, value);
+                self.variables.insert(name.inner.to_string(), var);
+                Ok(())
+            }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {
                     self.builder.ins().return_(&[]);

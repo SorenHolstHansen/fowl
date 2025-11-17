@@ -1,4 +1,4 @@
-// rt.c — Minimal runtime for an LLVM-based language
+// Minimal runtime
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
