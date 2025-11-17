@@ -23,5 +23,5 @@ fn main() void {
 	let foo = Foo { a = none, b: 1.1, c: "hi there", d: true, e: Bar.A };
 	let my_a = try a(foo) catch e {};
 
-	println("This is my_a {my_a}. This is nested {"Hi {4 + 5}"}");
+	println("This is my_a {my_a}. I can escape stuff \{something\}. This is nested {"Hi {4 + 5}"}");
 }

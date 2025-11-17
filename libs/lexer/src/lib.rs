@@ -56,6 +56,9 @@ pub fn tokenize<'source>(
 ) -> (Lexer<'source>, Vec<(LexerError<'source>, Span)>) {
     let a = Token::lexer(source);
 
+    // TODO: Would prefer a better lexer interface that don't allocate two Vec's here.
+    // The parser should preferrably just walk the lexer, and deal with errors as it finds them
+    // This was simple to begin with to dump the tokens
     let (tokens, errors): (Vec<_>, Vec<_>) = a.spanned().partition_map(|(t, span)| match t {
         Ok(t) => Either::Left((t, Span::from(span))),
         Err(e) => Either::Right((e, span.into())),

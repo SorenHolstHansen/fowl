@@ -74,6 +74,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     // Lexing step
     tracing::info!(?path, "Lexing");
     let (lexer, lexer_errors) = tokenize(source);
+    let mut has_errors = !lexer_errors.is_empty();
     emit_diagnostics(
         lexer_errors
             .iter()
@@ -88,6 +89,9 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     // Parsing step
     tracing::info!(?path, "Parsing");
     let (program, parser_errors) = parse(lexer);
+    if !parser_errors.is_empty() {
+        has_errors = true;
+    }
     emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
     if settings.dump_ast {
         println!("\n== AST ==");
@@ -98,6 +102,9 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
 
     // Type checker step
 
+    if has_errors {
+        panic!();
+    }
     // Codegen step
     tracing::info!(?path, "Codegen");
     let codegen_options = settings.codegen_options()?;

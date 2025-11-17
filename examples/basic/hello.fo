@@ -1,4 +1,4 @@
 fn main() int {
-	fowl_std_io_print("HI, there {2}");
+	rt_print_str("Hello {2}");
 	return 4;
 }

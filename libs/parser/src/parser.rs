@@ -413,7 +413,7 @@ impl<'source> Parser<'source> {
         Ok(statements)
     }
 
-    pub fn parse_string_literal_or_interpolation(
+    fn parse_string_literal_or_interpolation(
         &mut self,
         parts: Vec<(Token<'source>, Span)>,
     ) -> Result<Expr<'source>, Diagnostic> {
@@ -427,7 +427,7 @@ impl<'source> Parser<'source> {
 
         let mut exprs = Vec::new();
         while string_interpolation_parser.lexer.peek().is_some() {
-            let e = string_interpolation_parser.parse_expression(0)?;
+            let e = string_interpolation_parser.parse_string_interpolation_expr(0)?;
             exprs.push(e);
         }
 
@@ -441,7 +441,29 @@ impl<'source> Parser<'source> {
         Ok(Expr::StringInterpolation(exprs))
     }
 
-    pub fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
+    fn parse_string_interpolation_expr(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
+        let Some((token, span)) = self.lexer.next() else {
+            todo!("Need an EOF span")
+        };
+        let expr_span = span;
+
+        match token {
+            Token::LBrace => {
+                let expr = self.parse_expression(min_bp)?;
+                self.lexer.next();
+                return Ok(expr);
+            }
+            Token::StringFragment(s) => return Ok(Expr::StringLiteral(Some(s))),
+            t => {
+                return Err(Diagnostic::error(
+                    expr_span,
+                    format!("Unexpected token {}", t),
+                ));
+            }
+        };
+    }
+
+    fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
         let Some((token, span)) = self.lexer.next() else {
             todo!("Need an EOF span")
         };
@@ -584,9 +606,7 @@ impl<'source> Parser<'source> {
         Ok(arguments)
     }
 
-    pub fn parse_struct_fields(
-        &mut self,
-    ) -> Result<Vec<(Ident<'source>, Expr<'source>)>, Diagnostic> {
+    fn parse_struct_fields(&mut self) -> Result<Vec<(Ident<'source>, Expr<'source>)>, Diagnostic> {
         let mut fields = Vec::new();
 
         // parent has already eaten left brace as the operator
