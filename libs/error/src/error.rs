@@ -26,9 +26,9 @@ pub struct Diagnostic {
     severity: DiagnosticSeverity,
     span: Span,
     message: Cow<'static, str>,
-    suggestion: Option<Cow<'static, str>>,
-    labels: Vec<(Cow<'static, str>, Span, DiagnosticSeverity)>,
+    note: Option<Cow<'static, str>>,
     help: Option<Cow<'static, str>>,
+    labels: Vec<(Cow<'static, str>, Span, DiagnosticSeverity)>,
 }
 
 impl Diagnostic {
@@ -41,14 +41,14 @@ impl Diagnostic {
             severity,
             span,
             message: message.into(),
-            suggestion: None,
-            labels: Vec::new(),
+            note: None,
             help: None,
+            labels: Vec::new(),
         }
     }
 
-    pub fn with_suggestion(mut self, suggestion: impl Into<Cow<'static, str>>) -> Self {
-        self.suggestion = Some(suggestion.into());
+    pub fn with_note(mut self, suggestion: impl Into<Cow<'static, str>>) -> Self {
+        self.note = Some(suggestion.into());
         self
     }
 
@@ -139,17 +139,14 @@ pub fn emit_diagnostics<'source>(
                     .with_color(severity.color()),
             );
         }
-        // Add suggestion if available
-        if let Some(suggestion) = &diagnostic.suggestion {
-            report = report.with_note(format!("💡 Suggestion: {}", suggestion));
+        // Add note if available
+        if let Some(suggestion) = &diagnostic.note {
+            report = report.with_note(format!("{}", suggestion));
         }
 
         // Add help text if available
         if let Some(help) = &diagnostic.help {
-            report = report.with_note(format!("ℹ️  {}", help));
-        } else {
-            report = report
-                .with_note("For more information, re-run with --debug to inspect tokens and AST.");
+            report = report.with_help(format!("{}", help));
         }
 
         let _ = report.finish().eprint((file, Source::from(source)));

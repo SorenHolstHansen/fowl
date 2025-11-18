@@ -146,11 +146,11 @@ impl<'source> Parser<'source> {
                 // Check if there is a struct name
                 let name = self.parse_ident().map_err(|e| {
                     e.with_help("Expected struct name")
-                        .with_suggestion("try giving the struct a name: `struct MyStruct {{}}`")
+                        .with_note("try giving the struct a name: `struct MyStruct {{}}`")
                 })?;
 
                 self.expect_token(Token::LBrace).map_err(|e| {
-                    e.with_suggestion(format!(
+                    e.with_note(format!(
                         "try giving the struct a body: `struct {} {{}}`",
                         name.inner,
                     ))
@@ -168,7 +168,7 @@ impl<'source> Parser<'source> {
 
                     let param_name = self.parse_ident().map_err(|e| {
                         e.with_help("Expected struct field name")
-                            .with_suggestion("try giving the field a name: `my_field: ...`")
+                            .with_note("try giving the field a name: `my_field: ...`")
                     })?;
                     self.expect_token(Token::Colon)?;
 
@@ -197,11 +197,11 @@ impl<'source> Parser<'source> {
                 // Check if there is an enum name
                 let name = self.parse_ident().map_err(|e| {
                     e.with_help("Expected enum name")
-                        .with_suggestion("try giving the enum a name: `enum MyEnum {{}}`")
+                        .with_note("try giving the enum a name: `enum MyEnum {{}}`")
                 })?;
 
                 self.expect_token(Token::LBrace).map_err(|e| {
-                    e.with_suggestion(format!(
+                    e.with_note(format!(
                         "try giving the enum a body: `enum {} {{}}`",
                         name.inner,
                     ))
@@ -219,7 +219,7 @@ impl<'source> Parser<'source> {
 
                     let variant_name = self.parse_ident().map_err(|e| {
                         e.with_help("Expected enum variant name")
-                            .with_suggestion("try giving the variant a name: `MyVariant ...`")
+                            .with_note("try giving the variant a name: `MyVariant ...`")
                     })?;
                     self.expect_token(Token::Comma)?;
 
@@ -289,14 +289,14 @@ impl<'source> Parser<'source> {
         // TODO: Handle anon functions
         let name = self.parse_ident().map_err(|e| {
             e.with_help("Expected function name")
-                .with_suggestion("try giving the function a name: `fn my_function() ...`")
+                .with_note("try giving the function a name: `fn my_function() ...`")
         })?;
 
         let params = self.parse_function_parameters()?;
 
         let ret_ty = self
             .parse_type()
-            .map_err(|e| e.with_suggestion("expected function return type"))?;
+            .map_err(|e| e.with_note("expected function return type"))?;
 
         let (_, lbrace_span) = self.expect_token(Token::LBrace)?;
 
@@ -332,7 +332,7 @@ impl<'source> Parser<'source> {
         loop {
             let param_name = self
                 .parse_ident()
-                .map_err(|e| e.with_suggestion("expected parameter name"))?;
+                .map_err(|e| e.with_note("expected parameter name"))?;
             let param_span = param_name.span;
 
             self.expect_token(Token::Colon)?;
@@ -349,7 +349,7 @@ impl<'source> Parser<'source> {
             let (token, _) = self
                 .expect_one_of_token(&[Token::RParen, Token::Comma])
                 .map_err(|e| {
-                    e.with_suggestion("Expected new parameter or a ) to end the parameter list")
+                    e.with_note("Expected new parameter or a ) to end the parameter list")
                 })?;
 
             if token == Token::RParen {
