@@ -16,3 +16,4 @@ error = { workspace = true }
 lexer = { workspace = true }
 parser = { workspace = true }
 span = { workspace = true }
+typecheck.workspace = true

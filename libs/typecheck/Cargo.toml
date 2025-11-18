@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+error.workspace = true
 parser = { workspace = true }
+span.workspace = true

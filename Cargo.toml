@@ -13,3 +13,4 @@ lexer = { path = "libs/lexer" }
 module = { path = "libs/module" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }
+typecheck = { path = "libs/typecheck" }

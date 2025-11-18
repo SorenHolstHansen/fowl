@@ -1,5 +1,4 @@
 fn main() int {
 	let a = 5;
-	rt_print_str("Hello {a + 2}");
 	return a;
 }

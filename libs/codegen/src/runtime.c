@@ -12,11 +12,6 @@ void rt_print_str(const char *s) {
     fputs(s, stdout);
 }
 
-void rt_println_str(const char *s) {
-    fputs(s, stdout);
-    putchar('\n');
-}
-
 // ======================
 // String creation / memory
 // ======================

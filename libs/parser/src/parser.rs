@@ -246,6 +246,35 @@ impl<'source> Parser<'source> {
             Token::Fn => Ok(Declaration::Function(
                 self.parse_function()?.set_public(is_pub),
             )),
+            Token::Use => {
+                // Skip the peeked "use"
+                self.lexer.next();
+
+                let namespace = self.parse_ident()?;
+                let mut import = vec![namespace];
+
+                // repeatedly parse `.submodule`
+                loop {
+                    match self.lexer.peek() {
+                        None => todo!("Need an EOF"),
+                        Some((Token::Semicolon, _)) => {
+                            self.lexer.next();
+                            break;
+                        }
+                        Some((Token::Dot, _)) => {
+                            self.lexer.next();
+                            let submodule = self.parse_ident()?;
+                            import.push(submodule);
+                            continue;
+                        }
+                        Some((_, s)) => {
+                            return Err(Diagnostic::error(s, "Unexpected token"));
+                        }
+                    }
+                }
+
+                Ok(Declaration::Use { import })
+            }
             Token::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
             Token::Return => Err(Diagnostic::error(span, "Unexpected return statement")),
             x => Err(Diagnostic::error(span, format!("Unexpected '{}'", x))),

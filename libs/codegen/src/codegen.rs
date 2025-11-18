@@ -3,9 +3,9 @@ use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{Context, ir::Type};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
-use parser::ast::{self, Program};
 use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
+use typecheck::ast::{self, Program};
 
 pub struct CodegenOptions {
     /// Target triple for cross-compilation (defaults to native)
@@ -154,7 +154,7 @@ impl Compiler {
     fn declare_function(&mut self, function: &ast::Function) -> anyhow::Result<FuncId> {
         let mut param_types = vec![];
         for param in &function.params {
-            let ty = type_from_ast(&param.ty, &self.module)?.expect("Can't use void here");
+            let ty = type_from_ast(&param.ty.kind, &self.module)?.expect("Can't use void here");
             param_types.push(AbiParam::new(ty));
         }
 
@@ -179,15 +179,14 @@ impl Compiler {
     }
 }
 
-fn type_from_ast(ast_ty: &ast::Type, module: &ObjectModule) -> anyhow::Result<Option<Type>> {
-    match &ast_ty.kind {
+fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> anyhow::Result<Option<Type>> {
+    match &ast_ty {
         ast::TypeKind::Ident(_) => todo!(),
         ast::TypeKind::Int => Ok(Some(types::I64)),
         ast::TypeKind::Float => Ok(Some(types::F64)),
         ast::TypeKind::String => Ok(Some(module.target_config().pointer_type())),
         ast::TypeKind::Bool => Ok(Some(types::I8)),
         ast::TypeKind::Void => Ok(None),
-        ast::TypeKind::Generic { .. } => todo!(),
     }
 }
 
@@ -262,7 +261,7 @@ impl<'a> FunctionCompiler<'a> {
 
     fn eval_call(&mut self, call: &ast::Call) -> anyhow::Result<Option<Value>> {
         match &*call.callee {
-            ast::Expr::Ident(ident) => {
+            ast::Expr::Ident { ident, .. } => {
                 let func_id = match self.module.declarations().get_name(ident.inner).unwrap() {
                     cranelift_module::FuncOrDataId::Func(func_id) => func_id,
                     cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -309,12 +308,14 @@ impl<'a> FunctionCompiler<'a> {
                 let v = self.eval_string_interpolation(parts)?;
                 Ok(Some(v))
             }
-            ast::Expr::Ident(ident) => {
+            ast::Expr::Ident { ident, .. } => {
                 let var = self.variables.get(ident.inner).unwrap();
                 let v = self.builder.use_var(*var);
                 Ok(Some(v))
             }
-            ast::Expr::Binary { op, left, right } => {
+            ast::Expr::Binary {
+                op, left, right, ..
+            } => {
                 let left_expr = self.eval_expr(left)?.expect("Should be there");
                 let right_expr = self.eval_expr(right)?.expect("Should be there");
                 match op {
@@ -335,7 +336,7 @@ impl<'a> FunctionCompiler<'a> {
                 }
             }
             ast::Expr::Unary { .. } => todo!(),
-            ast::Expr::Call(call) => self.eval_call(call),
+            ast::Expr::Call { call, .. } => self.eval_call(call),
             ast::Expr::StructInstance { .. } => todo!(),
             ast::Expr::Member { .. } => todo!(),
         }
@@ -373,12 +374,11 @@ impl<'a> FunctionCompiler<'a> {
 
         for part in parts {
             let mut v = self.eval_expr(part)?.expect("Found void");
-            dbg!(&part);
             match part {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
-                ast::Expr::Ident(_) => {
+                ast::Expr::Ident { .. } => {
                     // TODO: Check the type of ident
                     v = self.format_int_fn(v)?;
                 }

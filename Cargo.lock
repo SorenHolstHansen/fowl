@@ -150,8 +150,8 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-module",
  "cranelift-object",
- "parser",
  "target-lexicon",
+ "typecheck",
 ]
 
 [[package]]
@@ -374,6 +374,7 @@ dependencies = [
  "lexer",
  "parser",
  "span",
+ "typecheck",
 ]
 
 [[package]]
@@ -659,7 +660,9 @@ checksum = "df7f62577c25e07834649fc3b39fafdc597c0a3527dc1c60129201ccfcbaa50c"
 name = "typecheck"
 version = "0.1.0"
 dependencies = [
+ "error",
  "parser",
+ "span",
 ]
 
 [[package]]

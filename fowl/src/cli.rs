@@ -97,6 +97,15 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     // Module step
 
     // Type checker step
+    let (program, typecheck_errors) = typecheck::typecheck(program);
+    emit_diagnostics(
+        typecheck_errors.into_iter().map(|e| e.with_file(path)),
+        source,
+    );
+    if settings.dump_ast {
+        println!("\n== TYPED AST ==");
+        println!("{:#?}", program);
+    }
 
     if has_errors {
         panic!();
