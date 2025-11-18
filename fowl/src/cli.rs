@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
 use error::emit_diagnostics;
 use lexer::{lexer_error::lexer_error_to_diagnostic, tokenize};
-use logging::init_logging;
 use parser::parser::parse;
 use std::{
     path::{Path, PathBuf},
@@ -63,7 +62,6 @@ pub fn run() -> Result<()> {
 }
 
 fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
-    init_logging();
     let source = std::fs::read_to_string(path)?;
     compile_pipeline(path, &source, settings)?;
 
@@ -72,7 +70,6 @@ fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
 
 fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<()> {
     // Lexing step
-    tracing::info!(?path, "Lexing");
     let (lexer, lexer_errors) = tokenize(source);
     let mut has_errors = !lexer_errors.is_empty();
     emit_diagnostics(
@@ -87,7 +84,6 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     }
 
     // Parsing step
-    tracing::info!(?path, "Parsing");
     let (program, parser_errors) = parse(lexer);
     if !parser_errors.is_empty() {
         has_errors = true;
@@ -106,7 +102,6 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
         panic!();
     }
     // Codegen step
-    tracing::info!(?path, "Codegen");
     let codegen_options = settings.codegen_options()?;
     let output = PathBuf::from("./.fowl/tmp_binary");
     build_executable(&program, &output, &codegen_options)?;
@@ -116,11 +111,9 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
 }
 
 fn execute_binary(path: &Path) {
-    tracing::info!(?path, "Running binary");
     let mut command = std::process::Command::new(path);
 
-    let status = command.status().unwrap();
-    tracing::info!(?status, "Binary ran");
+    let _ = command.status().unwrap();
 }
 
 pub struct CompilerSettings {

@@ -1,9 +1,9 @@
 use anyhow::bail;
-use ast::Program;
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{Context, ir::Type};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
+use parser::ast::{self, Program};
 use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
 
@@ -310,11 +310,30 @@ impl<'a> FunctionCompiler<'a> {
                 Ok(Some(v))
             }
             ast::Expr::Ident(ident) => {
-                let var = self.variables.get(&ident.inner.to_string()).unwrap();
-                let v = self.builder.use_var(var.clone());
+                let var = self.variables.get(ident.inner).unwrap();
+                let v = self.builder.use_var(*var);
                 Ok(Some(v))
             }
-            ast::Expr::Binary { .. } => todo!(),
+            ast::Expr::Binary { op, left, right } => {
+                let left_expr = self.eval_expr(left)?.expect("Should be there");
+                let right_expr = self.eval_expr(right)?.expect("Should be there");
+                match op {
+                    ast::BinaryOp::Add => Ok(Some(self.builder.ins().iadd(left_expr, right_expr))),
+                    ast::BinaryOp::Sub => Ok(Some(self.builder.ins().isub(left_expr, right_expr))),
+                    ast::BinaryOp::Mul => todo!(),
+                    ast::BinaryOp::Div => todo!(),
+                    ast::BinaryOp::Mod => todo!(),
+                    ast::BinaryOp::Exp => todo!(),
+                    ast::BinaryOp::Eq => todo!(),
+                    ast::BinaryOp::Ne => todo!(),
+                    ast::BinaryOp::Lt => todo!(),
+                    ast::BinaryOp::Gt => todo!(),
+                    ast::BinaryOp::LtEq => todo!(),
+                    ast::BinaryOp::GtEq => todo!(),
+                    ast::BinaryOp::And => todo!(),
+                    ast::BinaryOp::Or => todo!(),
+                }
+            }
             ast::Expr::Unary { .. } => todo!(),
             ast::Expr::Call(call) => self.eval_call(call),
             ast::Expr::StructInstance { .. } => todo!(),
@@ -345,7 +364,7 @@ impl<'a> FunctionCompiler<'a> {
         let id = self.module.declare_anonymous_data(true, false).unwrap();
         // TODO: pull the DataDescription top-level to reuse resources
         let mut data_description = DataDescription::new();
-        data_description.define("\00".as_bytes().to_vec().into_boxed_slice());
+        data_description.define("\0".as_bytes().to_vec().into_boxed_slice());
         self.module.define_data(id, &data_description).unwrap();
 
         let local_id = self.module.declare_data_in_func(id, self.builder.func);
@@ -354,11 +373,16 @@ impl<'a> FunctionCompiler<'a> {
 
         for part in parts {
             let mut v = self.eval_expr(part)?.expect("Found void");
+            dbg!(&part);
             match part {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
                 ast::Expr::Ident(_) => {
+                    // TODO: Check the type of ident
+                    v = self.format_int_fn(v)?;
+                }
+                ast::Expr::Binary { .. } => {
                     // TODO: Check the type of ident
                     v = self.format_int_fn(v)?;
                 }
@@ -428,8 +452,6 @@ pub fn build_executable(
         std::fs::create_dir_all(output.parent().unwrap()).unwrap();
         let mut f = File::create(&object_path).unwrap();
         f.write_all(&bytes).unwrap();
-
-        tracing::info!("wrote object file to {output:?}");
     }
 
     let runtime_c = {
@@ -459,8 +481,7 @@ pub fn build_executable(
 
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
-    let status = cc.status().unwrap();
-    tracing::debug!(?status, "Object files linked");
+    let _ = cc.status().unwrap();
 
     Ok(())
 }

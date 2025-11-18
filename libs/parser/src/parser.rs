@@ -1,4 +1,4 @@
-use ast::{
+use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, Expr, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
@@ -451,16 +451,14 @@ impl<'source> Parser<'source> {
             Token::LBrace => {
                 let expr = self.parse_expression(min_bp)?;
                 self.lexer.next();
-                return Ok(expr);
+                Ok(expr)
             }
-            Token::StringFragment(s) => return Ok(Expr::StringLiteral(Some(s))),
-            t => {
-                return Err(Diagnostic::error(
-                    expr_span,
-                    format!("Unexpected token {}", t),
-                ));
-            }
-        };
+            Token::StringFragment(s) => Ok(Expr::StringLiteral(Some(s))),
+            t => Err(Diagnostic::error(
+                expr_span,
+                format!("Unexpected token {}", t),
+            )),
+        }
     }
 
     fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
