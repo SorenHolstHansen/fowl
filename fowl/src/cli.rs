@@ -122,7 +122,8 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
 fn execute_binary(path: &Path) {
     let mut command = std::process::Command::new(path);
 
-    let _ = command.status().unwrap();
+    let output = command.output().unwrap();
+    std::process::exit(output.status.code().unwrap_or(0));
 }
 
 pub struct CompilerSettings {

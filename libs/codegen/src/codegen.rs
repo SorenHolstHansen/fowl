@@ -144,7 +144,7 @@ impl Compiler {
         function_compiler.compile(function)?;
         function_compiler.finalize();
 
-        println!("fn main:\n{}", &self.ctx.func);
+        // println!("fn main:\n{}", &self.ctx.func);
         self.module.define_function(func_id, &mut self.ctx).unwrap();
 
         self.ctx.clear();
