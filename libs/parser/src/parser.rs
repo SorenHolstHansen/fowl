@@ -538,10 +538,10 @@ impl<'source> Parser<'source> {
                 span: expr_span,
             },
             t => {
-                return Err(Diagnostic::error(
-                    expr_span,
-                    format!("Unexpected token {}", t),
-                ));
+                return Err(
+                    Diagnostic::error(expr_span, format!("Unexpected token '{}'", t))
+                        .with_error_label(expr_span, format!("unexpected token '{}'", t)),
+                );
             }
         };
 
@@ -580,6 +580,8 @@ impl<'source> Parser<'source> {
 
                 lhs = match op {
                     Op::Call => {
+                        // Eat the '('
+                        self.lexer.next();
                         let args = self.parse_fn_call_arguments()?;
                         // TODO: extend expr_span
                         Expr {
