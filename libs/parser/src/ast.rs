@@ -132,7 +132,7 @@ pub struct Call<'source> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr<'source> {
+pub enum ExprKind<'source> {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
@@ -160,6 +160,12 @@ pub enum Expr<'source> {
         object: Box<Expr<'source>>,
         field: Ident<'source>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct Expr<'source> {
+    pub kind: ExprKind<'source>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

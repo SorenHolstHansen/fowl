@@ -43,6 +43,27 @@ pub enum BinaryOp {
     Or,
 }
 
+impl From<parser::ast::BinaryOp> for BinaryOp {
+    fn from(value: parser::ast::BinaryOp) -> Self {
+        match value {
+            parser::ast::BinaryOp::Add => BinaryOp::Add,
+            parser::ast::BinaryOp::Sub => BinaryOp::Sub,
+            parser::ast::BinaryOp::Mul => BinaryOp::Mul,
+            parser::ast::BinaryOp::Div => BinaryOp::Div,
+            parser::ast::BinaryOp::Mod => BinaryOp::Mod,
+            parser::ast::BinaryOp::Exp => BinaryOp::Exp,
+            parser::ast::BinaryOp::Eq => BinaryOp::Eq,
+            parser::ast::BinaryOp::Ne => BinaryOp::Ne,
+            parser::ast::BinaryOp::Lt => BinaryOp::Lt,
+            parser::ast::BinaryOp::Gt => BinaryOp::Gt,
+            parser::ast::BinaryOp::LtEq => BinaryOp::LtEq,
+            parser::ast::BinaryOp::GtEq => BinaryOp::GtEq,
+            parser::ast::BinaryOp::And => BinaryOp::And,
+            parser::ast::BinaryOp::Or => BinaryOp::Or,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
@@ -226,7 +247,7 @@ impl<'source> Statement<'source> {
             Statement::Function(function) => function.span,
             Statement::Struct(s) => s.span,
             Statement::Enum(e) => e.span,
-            Statement::Expr(expr) => todo!(),
+            Statement::Expr(_) => todo!(),
         }
     }
 }

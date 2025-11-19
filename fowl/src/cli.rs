@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
 use error::emit_diagnostics;
@@ -98,6 +98,9 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
 
     // Type checker step
     let (program, typecheck_errors) = typecheck::typecheck(program);
+    if !typecheck_errors.is_empty() {
+        has_errors = true;
+    }
     emit_diagnostics(
         typecheck_errors.into_iter().map(|e| e.with_file(path)),
         source,
@@ -108,7 +111,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     }
 
     if has_errors {
-        panic!();
+        bail!("Please address the issues");
     }
     // Codegen step
     let codegen_options = settings.codegen_options()?;

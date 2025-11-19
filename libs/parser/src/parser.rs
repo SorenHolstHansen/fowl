@@ -1,5 +1,7 @@
+use crate::ast::Expr;
+
 use super::ast::{
-    Block, Call, Declaration, Enum, EnumVariant, Expr, Function, Ident, Op, Param, Program,
+    Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
 use error::Diagnostic;
@@ -447,7 +449,11 @@ impl<'source> Parser<'source> {
         parts: Vec<(Token<'source>, Span)>,
     ) -> Result<Expr<'source>, Diagnostic> {
         if parts.is_empty() {
-            return Ok(Expr::StringLiteral(None));
+            return Ok(Expr {
+                kind: ExprKind::StringLiteral(None),
+                // TODO:
+                span: Span::new(0, 0),
+            });
         }
         let mut string_interpolation_parser = Parser {
             lexer: Lexer::new(parts),
@@ -462,12 +468,16 @@ impl<'source> Parser<'source> {
 
         if exprs.len() == 1 {
             let first = exprs.first().expect("Must be there by the if check");
-            if let Expr::StringLiteral(_) = first {
+            if let ExprKind::StringLiteral(_) = first.kind {
                 return Ok(first.clone());
             }
         }
 
-        Ok(Expr::StringInterpolation(exprs))
+        Ok(Expr {
+            kind: ExprKind::StringInterpolation(exprs),
+            // TODO:
+            span: Span::new(0, 0),
+        })
     }
 
     fn parse_string_interpolation_expr(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
@@ -482,7 +492,10 @@ impl<'source> Parser<'source> {
                 self.lexer.next();
                 Ok(expr)
             }
-            Token::StringFragment(s) => Ok(Expr::StringLiteral(Some(s))),
+            Token::StringFragment(s) => Ok(Expr {
+                kind: ExprKind::StringLiteral(Some(s)),
+                span: expr_span,
+            }),
             t => Err(Diagnostic::error(
                 expr_span,
                 format!("Unexpected token {}", t),
@@ -498,17 +511,32 @@ impl<'source> Parser<'source> {
 
         // Create the initial lhs. Then we will, in a recursion like way update lhs to be the lhs with an op and a right side
         let mut lhs = match token {
-            Token::IntLiteral(i) => Expr::IntLiteral(i),
-            Token::FloatLiteral(f) => Expr::FloatLiteral(f),
-            Token::BoolLiteral(b) => Expr::BoolLiteral(b),
-            Token::Ident(ident) => Expr::Ident(Ident {
-                inner: ident,
+            Token::IntLiteral(i) => Expr {
+                kind: ExprKind::IntLiteral(i),
                 span: expr_span,
-            }),
+            },
+            Token::FloatLiteral(f) => Expr {
+                kind: ExprKind::FloatLiteral(f),
+                span: expr_span,
+            },
+            Token::BoolLiteral(b) => Expr {
+                kind: ExprKind::BoolLiteral(b),
+                span: expr_span,
+            },
+            Token::Ident(ident) => Expr {
+                kind: ExprKind::Ident(Ident {
+                    inner: ident,
+                    span: expr_span,
+                }),
+                span: expr_span,
+            },
             Token::StringLiteralOrInterpolation(s) => {
                 self.parse_string_literal_or_interpolation(s)?
             }
-            Token::StringFragment(s) => Expr::StringLiteral(Some(s)),
+            Token::StringFragment(s) => Expr {
+                kind: ExprKind::StringLiteral(Some(s)),
+                span: expr_span,
+            },
             t => {
                 return Err(Diagnostic::error(
                     expr_span,
@@ -521,6 +549,7 @@ impl<'source> Parser<'source> {
             let Some((op_token, span)) = self.lexer.peek() else {
                 break;
             };
+            let expr_span = expr_span.merge(span);
 
             let op = match op_token {
                 Token::Semicolon | Token::RBrace | Token::Comma | Token::RParen => break,
@@ -548,19 +577,28 @@ impl<'source> Parser<'source> {
                 if l_bp < min_bp {
                     break;
                 }
-                self.lexer.next();
 
                 lhs = match op {
-                    Op::Call => Expr::Call(Call {
-                        callee: Box::new(lhs),
-                        args: self.parse_fn_call_arguments()?,
-                    }),
+                    Op::Call => {
+                        let args = self.parse_fn_call_arguments()?;
+                        // TODO: extend expr_span
+                        Expr {
+                            kind: ExprKind::Call(Call {
+                                callee: Box::new(lhs),
+                                args,
+                            }),
+                            span: expr_span,
+                        }
+                    }
                     Op::StructInstance => {
                         let struct_name = self.parse_ident()?;
                         let struct_fields = self.parse_struct_fields()?;
-                        Expr::StructInstance {
-                            name: struct_name,
-                            fields: struct_fields,
+                        Expr {
+                            kind: ExprKind::StructInstance {
+                                name: struct_name,
+                                fields: struct_fields,
+                            },
+                            span: expr_span,
                         }
                     }
                     _ => todo!(),
@@ -577,23 +615,30 @@ impl<'source> Parser<'source> {
 
                 lhs = match op {
                     Op::FieldIndex => {
-                        let rhs = match self.parse_expression(r_bp)? {
-                            Expr::Ident(ident) => ident,
+                        let expr = self.parse_expression(r_bp)?;
+                        let rhs = match expr.kind {
+                            ExprKind::Ident(ident) => ident,
                             _ => {
                                 return Err(Diagnostic::error(expr_span, "Expected field name"));
                             }
                         };
-                        Expr::Member {
-                            object: Box::new(lhs),
-                            field: rhs,
+                        Expr {
+                            kind: ExprKind::Member {
+                                object: Box::new(lhs),
+                                field: rhs,
+                            },
+                            span: expr_span,
                         }
                     }
                     _ => {
                         let rhs = self.parse_expression(r_bp)?;
-                        Expr::Binary {
-                            op: op.try_into()?,
-                            left: Box::new(lhs),
-                            right: Box::new(rhs),
+                        Expr {
+                            kind: ExprKind::Binary {
+                                op: op.try_into()?,
+                                left: Box::new(lhs),
+                                right: Box::new(rhs),
+                            },
+                            span: expr_span,
                         }
                     }
                 };

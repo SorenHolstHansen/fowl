@@ -14,3 +14,4 @@ module = { path = "libs/module" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }
 typecheck = { path = "libs/typecheck" }
+utils = { path = "libs/utils" }

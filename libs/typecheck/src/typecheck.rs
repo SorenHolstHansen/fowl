@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-
 use super::ast as typecheck_ast;
 use error::Diagnostic;
 use parser::ast as parser_ast;
+use std::collections::HashMap;
+use utils::a_or_an;
 
 pub fn typecheck<'source>(
     program: parser_ast::Program<'source>,
@@ -74,31 +74,23 @@ impl<'source> Typechecker<'source> {
         let body = self.visit_block(&function.body)?;
 
         let ret_ty = body.ty.clone();
-        match (&function.ret_ty.kind, &ret_ty) {
-            (parser_ast::TypeKind::Int, typecheck_ast::TypeKind::Int) => {}
-            (parser_ast::TypeKind::Float, typecheck_ast::TypeKind::Float) => {}
-            (parser_ast::TypeKind::String, typecheck_ast::TypeKind::String) => {}
-            (parser_ast::TypeKind::Bool, typecheck_ast::TypeKind::Bool) => {}
-            (parser_ast::TypeKind::Void, typecheck_ast::TypeKind::Void) => {}
-            (parser_ast::TypeKind::Ident(ident1), typecheck_ast::TypeKind::Ident(ident2))
-                if ident1.inner == ident2.inner => {}
-            _ => {
-                return Err(Diagnostic::error(
-                    function.ret_ty.span,
-                    "Mismatched return type of function",
-                )
-                .with_info_label(
-                    function.ret_ty.span,
-                    format!("Return type defined as {}", function.ret_ty.kind),
-                )
-                .with_error_label(
-                    body.statements.last().unwrap().span(),
-                    format!(
-                        "Mismatched types. Expected '{}' found '{}'",
-                        function.ret_ty.kind, ret_ty
-                    ),
-                ));
-            }
+        let defined_ret_ty = self.visit_type(&function.ret_ty)?;
+        if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
+            return Err(Diagnostic::error(
+                function.ret_ty.span,
+                "Mismatched return type of function",
+            )
+            .with_info_label(
+                function.ret_ty.span,
+                format!("Return type defined as {}", function.ret_ty.kind),
+            )
+            .with_error_label(
+                body.statements.last().unwrap().span(),
+                format!(
+                    "Mismatched types. Expected '{}' found '{}'",
+                    function.ret_ty.kind, ret_ty
+                ),
+            ));
         }
 
         Ok(typecheck_ast::Function {
@@ -187,22 +179,113 @@ impl<'source> Typechecker<'source> {
         &mut self,
         expr: &parser_ast::Expr<'source>,
     ) -> Result<typecheck_ast::Expr<'source>, Diagnostic> {
-        match expr {
-            parser_ast::Expr::IntLiteral(i) => Ok(typecheck_ast::Expr::IntLiteral(*i)),
-            parser_ast::Expr::FloatLiteral(_) => todo!(),
-            parser_ast::Expr::BoolLiteral(_) => todo!(),
-            parser_ast::Expr::StringLiteral(_) => todo!(),
-            parser_ast::Expr::StringInterpolation(_) => todo!(),
-            parser_ast::Expr::Ident(i) => {
+        match &expr.kind {
+            parser_ast::ExprKind::IntLiteral(i) => Ok(typecheck_ast::Expr::IntLiteral(*i)),
+            parser_ast::ExprKind::FloatLiteral(f) => Ok(typecheck_ast::Expr::FloatLiteral(*f)),
+            parser_ast::ExprKind::BoolLiteral(_) => todo!(),
+            parser_ast::ExprKind::StringLiteral(_) => todo!(),
+            parser_ast::ExprKind::StringInterpolation(_) => todo!(),
+            parser_ast::ExprKind::Ident(i) => {
                 let ident: typecheck_ast::Ident<'source> = (*i).into();
                 let ty = self.variables.get(&ident.inner).unwrap().clone();
                 Ok(typecheck_ast::Expr::Ident { ident, ty })
             }
-            parser_ast::Expr::Binary { .. } => todo!(),
-            parser_ast::Expr::Unary { .. } => todo!(),
-            parser_ast::Expr::Call(_) => todo!(),
-            parser_ast::Expr::StructInstance { .. } => todo!(),
-            parser_ast::Expr::Member { .. } => todo!(),
+            parser_ast::ExprKind::Binary { op, left, right } => {
+                let left_expr = self.visit_expr(left)?;
+                let right_expr = self.visit_expr(right)?;
+                if matches!(op, parser_ast::BinaryOp::And | parser_ast::BinaryOp::Or)
+                    && left_expr.ty() != &typecheck_ast::TypeKind::Bool
+                    && right_expr.ty() != &typecheck_ast::TypeKind::Bool
+                {
+                    return Err(Diagnostic::error(
+                        expr.span,
+                        "Only boolean expression allowed on either side of 'and' or 'or'",
+                    ));
+                }
+                if !self.validate_types_align(left_expr.ty(), right_expr.ty()) {
+                    let left_ty = left_expr.ty().to_string();
+                    let left_a_or_an = a_or_an(&left_ty);
+                    let right_ty = right_expr.ty().to_string();
+                    let right_a_or_an = a_or_an(&right_ty);
+                    let message = match op {
+                        parser_ast::BinaryOp::Add => format!(
+                            "cannot add {} '{}' to {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::Sub => format!(
+                            "cannot subtract {} '{}' from {} '{}'",
+                            right_a_or_an, right_ty, left_a_or_an, left_ty,
+                        ),
+                        parser_ast::BinaryOp::Mul => format!(
+                            "cannot multiply {} '{}' with {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::Div => format!(
+                            "cannot divide {} '{}' with {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::Mod => format!(
+                            "cannot take the remainder of {} '{}' with {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::Exp => format!(
+                            "cannot take exponentiate {} '{}' with {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::LtEq
+                        | parser_ast::BinaryOp::GtEq
+                        | parser_ast::BinaryOp::Ne
+                        | parser_ast::BinaryOp::Lt
+                        | parser_ast::BinaryOp::Gt
+                        | parser_ast::BinaryOp::Eq => format!(
+                            "cannot compare {} '{}' with {} '{}'",
+                            left_a_or_an, left_ty, right_a_or_an, right_ty
+                        ),
+                        parser_ast::BinaryOp::And | parser_ast::BinaryOp::Or => {
+                            unreachable!()
+                        }
+                    };
+                    return Err(Diagnostic::error(expr.span, message)
+                        .with_error_label(
+                            left.span,
+                            format!("This is {} '{}'", left_a_or_an, left_ty),
+                        )
+                        .with_error_label(
+                            right.span,
+                            format!("This is {} '{}'", right_a_or_an, right_ty),
+                        ));
+                }
+                Ok(typecheck_ast::Expr::Binary {
+                    op: (*op).into(),
+                    ty: left_expr.ty().clone(),
+                    left: Box::new(left_expr),
+                    right: Box::new(right_expr),
+                })
+            }
+            parser_ast::ExprKind::Unary { .. } => todo!(),
+            parser_ast::ExprKind::Call(_) => todo!(),
+            parser_ast::ExprKind::StructInstance { .. } => todo!(),
+            parser_ast::ExprKind::Member { .. } => todo!(),
+        }
+    }
+
+    fn validate_types_align(
+        &mut self,
+        ty1: &typecheck_ast::TypeKind<'source>,
+        ty2: &typecheck_ast::TypeKind<'source>,
+    ) -> bool {
+        match (ty1, ty2) {
+            (typecheck_ast::TypeKind::Int, typecheck_ast::TypeKind::Int)
+            | (typecheck_ast::TypeKind::Float, typecheck_ast::TypeKind::Float)
+            | (typecheck_ast::TypeKind::String, typecheck_ast::TypeKind::String)
+            | (typecheck_ast::TypeKind::Bool, typecheck_ast::TypeKind::Bool)
+            | (typecheck_ast::TypeKind::Void, typecheck_ast::TypeKind::Void) => true,
+            (typecheck_ast::TypeKind::Ident(ident1), typecheck_ast::TypeKind::Ident(ident2))
+                if ident1.inner == ident2.inner =>
+            {
+                true
+            }
+            _ => false,
         }
     }
 

@@ -7,3 +7,4 @@ edition = "2024"
 error.workspace = true
 parser = { workspace = true }
 span.workspace = true
+utils.workspace = true
