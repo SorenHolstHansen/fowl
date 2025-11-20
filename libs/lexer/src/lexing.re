@@ -130,7 +130,4 @@ impl<'src> Iterator for Lexer<'src> {
     }
 }
 
-
-pub const YYC_INIT: usize = 0;
-pub const YYC_STRING: usize = 1;
-pub const YYC_INTERP: usize = 2;
+/*!conditions:re2c*/

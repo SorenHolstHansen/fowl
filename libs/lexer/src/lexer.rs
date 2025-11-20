@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::num::{ParseFloatError, ParseIntError};
 
 use error::Diagnostic;
@@ -9,7 +10,6 @@ pub enum LexerErrorKind<'src> {
     ParseIntError(ParseIntError),
     ParseFloatError(ParseFloatError),
     UnexpectedToken(&'src str),
-    Other,
 }
 
 impl<'src> std::fmt::Display for LexerErrorKind<'src> {
@@ -18,7 +18,6 @@ impl<'src> std::fmt::Display for LexerErrorKind<'src> {
             LexerErrorKind::ParseIntError(e) => write!(f, "ParseIntError({e:?})"),
             LexerErrorKind::ParseFloatError(e) => write!(f, "ParseFloatError({e:?})"),
             LexerErrorKind::UnexpectedToken(t) => write!(f, "UnexpectedToken({t})"),
-            LexerErrorKind::Other => write!(f, "Other "),
         }
     }
 }
