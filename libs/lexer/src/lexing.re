@@ -95,7 +95,8 @@ impl<'src> Iterator for Lexer<'src> {
 
         // Strings
         <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }
-        <STRING> [^"\\{]+              { return self.token(TokenKind::StringLiteral(self.token_text())) }
+        <STRING> "}"                   { if self.interpolation_depth > 0 { self.interpolation_depth -= 1; self.cond = YYC_STRING; return self.token(TokenKind::RBrace) } else { return self.error(LexerErrorKind::UnmatchedInterpolation(self.token_text())) } }
+        <STRING> [^"\\{\\}]+              { return self.token(TokenKind::StringLiteral(self.token_text())) }
         <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(&self.input[(self.token + 1)..(self.token + 2)])); }
         <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
         // string end
@@ -126,10 +127,10 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "\n"                    { return self.next() }
 
         // EOF
-        <INIT, STRING> $                { self.eof = true; return self.token(TokenKind::Eof) }
+        <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
 
         // Anything else
-        <INIT, STRING> *                       { return Some(Err(LexerError { span: self.span(), kind: LexerErrorKind::UnexpectedToken(self.token_text()) })) }
+        <INIT, STRING> *               { return self.error(LexerErrorKind::UnexpectedToken(self.token_text())) }
 
         */
     }

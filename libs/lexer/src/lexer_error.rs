@@ -7,6 +7,7 @@ pub enum LexerErrorKind<'src> {
     ParseIntError(ParseIntError),
     ParseFloatError(ParseFloatError),
     UnexpectedToken(&'src str),
+    UnmatchedInterpolation(&'src str),
 }
 
 impl<'src> std::fmt::Display for LexerErrorKind<'src> {
@@ -15,6 +16,7 @@ impl<'src> std::fmt::Display for LexerErrorKind<'src> {
             LexerErrorKind::ParseIntError(e) => write!(f, "ParseIntError({e:?})"),
             LexerErrorKind::ParseFloatError(e) => write!(f, "ParseFloatError({e:?})"),
             LexerErrorKind::UnexpectedToken(t) => write!(f, "UnexpectedToken({t})"),
+            LexerErrorKind::UnmatchedInterpolation(t) => write!(f, "UnmatchedInterpolation({t})"),
         }
     }
 }
@@ -34,6 +36,13 @@ impl<'src> From<&LexerError<'src>> for Diagnostic {
             LexerErrorKind::UnexpectedToken(t) => {
                 Diagnostic::error(span, format!("Unknown token '{}'", t))
             }
+            LexerErrorKind::UnmatchedInterpolation(t) => Diagnostic::error(
+                span,
+                format!(
+                    "Unmatched '{}' found. If you want to print '{}', write '\\{}'",
+                    t, t, t
+                ),
+            ),
         }
     }
 }

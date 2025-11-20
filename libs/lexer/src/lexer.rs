@@ -47,6 +47,16 @@ impl<'src> Lexer<'src> {
         Span::new(self.token, self.cursor)
     }
 
+    pub(crate) fn error(
+        &mut self,
+        kind: LexerErrorKind<'src>,
+    ) -> Option<Result<Token<'src>, LexerError<'src>>> {
+        Some(Err(LexerError {
+            span: self.span(),
+            kind,
+        }))
+    }
+
     pub(crate) fn token(
         &mut self,
         kind: TokenKind<'src>,
