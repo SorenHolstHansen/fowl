@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
 use error::emit_diagnostics;
-use lexer::{lexer_error::lexer_error_to_diagnostic, tokenize};
+use lexer::tokenize;
 use parser::parser::parse;
 use std::{
     path::{Path, PathBuf},
@@ -70,14 +70,7 @@ fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
 
 fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<()> {
     // Lexing step
-    let (lexer, lexer_errors) = tokenize(source);
-    let mut has_errors = !lexer_errors.is_empty();
-    emit_diagnostics(
-        lexer_errors
-            .iter()
-            .map(|(e, span)| lexer_error_to_diagnostic(e, *span, path)),
-        source,
-    );
+    let lexer = tokenize(source);
     if settings.dump_tokens {
         println!("\n== Tokens ==");
         println!("{}", lexer.clone().pretty_string());
@@ -85,9 +78,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
 
     // Parsing step
     let (program, parser_errors) = parse(lexer);
-    if !parser_errors.is_empty() {
-        has_errors = true;
-    }
+    let mut has_errors = !parser_errors.is_empty();
     emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
     if settings.dump_ast {
         println!("\n== AST ==");

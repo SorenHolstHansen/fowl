@@ -2,6 +2,6 @@ use std.io.println;
 
 fn main() int {
 	let a = 5;
-	println("a + 2 = {a + 2}");
+	println("a + 2 = ");
 	return a;
 }

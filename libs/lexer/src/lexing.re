@@ -3,12 +3,19 @@
     re2c:encoding-policy = ignore;
  */
 
-use super::lexer::{Lexer, Token, TokenKind, LexerError, LexerErrorKind};
+use super::token::{Token, TokenKind};
+use super::lexer_error::{LexerError, LexerErrorKind};
+use super::lexer::Lexer;
 
+#[allow(unused_braces)]
+#[rustfmt::skip]
 impl<'src> Iterator for Lexer<'src> {
     type Item = Result<Token<'src>, LexerError<'src>>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.peeked.take() {
+            return Some(next);
+        }
 
         if self.eof { return None }
 

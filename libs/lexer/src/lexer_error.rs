@@ -1,51 +1,39 @@
-use std::{
-    num::{ParseFloatError, ParseIntError},
-    path::Path,
-};
-
-use error::{Diagnostic, DiagnosticWithFile};
+use error::Diagnostic;
 use span::Span;
+use std::num::{ParseFloatError, ParseIntError};
 
-use crate::Token;
-
-#[derive(Default, Debug, Clone, PartialEq)]
-pub enum LexerError<'source> {
+#[derive(Clone)]
+pub enum LexerErrorKind<'src> {
     ParseIntError(ParseIntError),
     ParseFloatError(ParseFloatError),
-    Generic(&'source str),
-    #[default]
-    Other,
+    UnexpectedToken(&'src str),
 }
 
-impl<'source> From<ParseIntError> for LexerError<'source> {
-    fn from(err: ParseIntError) -> Self {
-        Self::ParseIntError(err)
-    }
-}
-
-impl<'source> From<ParseFloatError> for LexerError<'source> {
-    fn from(err: ParseFloatError) -> Self {
-        Self::ParseFloatError(err)
-    }
-}
-
-impl<'source> LexerError<'source> {
-    pub fn from_lexer(lex: &mut logos::Lexer<'source, Token<'source>>) -> Self {
-        LexerError::Generic(lex.slice())
-    }
-}
-
-pub fn lexer_error_to_diagnostic<'source>(
-    lexer_error: &'source LexerError,
-    span: Span,
-    file: &'source Path,
-) -> DiagnosticWithFile<'source> {
-    match lexer_error {
-        LexerError::ParseIntError(e) => Diagnostic::error(span, e.to_string()).with_file(file),
-        LexerError::ParseFloatError(e) => Diagnostic::error(span, e.to_string()).with_file(file),
-        LexerError::Generic(t) => {
-            Diagnostic::error(span, format!("Unknown token '{}'", t)).with_file(file)
+impl<'src> std::fmt::Display for LexerErrorKind<'src> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LexerErrorKind::ParseIntError(e) => write!(f, "ParseIntError({e:?})"),
+            LexerErrorKind::ParseFloatError(e) => write!(f, "ParseFloatError({e:?})"),
+            LexerErrorKind::UnexpectedToken(t) => write!(f, "UnexpectedToken({t})"),
         }
-        LexerError::Other => Diagnostic::error(span, "Unknown lexer error").with_file(file),
+    }
+}
+
+#[derive(Clone)]
+pub struct LexerError<'src> {
+    pub(crate) span: Span,
+    pub(crate) kind: LexerErrorKind<'src>,
+}
+
+impl<'src> From<&LexerError<'src>> for Diagnostic {
+    fn from(value: &LexerError<'src>) -> Self {
+        let span = value.span;
+        match &value.kind {
+            LexerErrorKind::ParseIntError(e) => Diagnostic::error(span, e.to_string()),
+            LexerErrorKind::ParseFloatError(e) => Diagnostic::error(span, e.to_string()),
+            LexerErrorKind::UnexpectedToken(t) => {
+                Diagnostic::error(span, format!("Unknown token '{}'", t))
+            }
+        }
     }
 }
