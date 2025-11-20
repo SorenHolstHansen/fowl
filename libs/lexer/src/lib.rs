@@ -6,6 +6,8 @@ use crate::lexer_error::LexerError;
 pub use token::Token;
 pub mod lexer_error;
 use logos::Logos;
+mod lexer;
+mod lexing;
 
 #[derive(Clone)]
 pub struct Lexer<'source> {

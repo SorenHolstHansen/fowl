@@ -95,6 +95,7 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     }
 
     // Module step
+    resolve_modules(&program)?;
 
     // Type checker step
     let (program, typecheck_errors) = typecheck::typecheck(program);
@@ -118,6 +119,16 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     let output = PathBuf::from("./.fowl/tmp_binary");
     build_executable(&program, &output, &codegen_options)?;
     execute_binary(&output);
+
+    Ok(())
+}
+
+fn resolve_modules<'source>(program: &parser::ast::Program<'source>) -> Result<()> {
+    for declaration in &program.declarations {
+        if let parser::ast::Declaration::Use { import } = declaration {
+            let namespace = import.first();
+        }
+    }
 
     Ok(())
 }

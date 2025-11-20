@@ -135,7 +135,7 @@ impl<'source> Typechecker<'source> {
         match statement {
             parser_ast::Statement::Let {
                 name,
-                ty: _ty,
+                ty,
                 expr,
                 mutable,
                 span,
