@@ -1,11 +1,10 @@
-use crate::ast::Expr;
-
 use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
+use crate::ast::Expr;
 use error::Diagnostic;
-use lexer::{Lexer, Token};
+use lexer::{Lexer, Token, TokenKind};
 use span::Span;
 
 pub fn parse<'source>(lexer: Lexer<'source>) -> (Program<'source>, Vec<Diagnostic>) {
@@ -25,15 +24,38 @@ struct Parser<'source> {
 }
 
 impl<'source> Parser<'source> {
+    fn next_token(&mut self) -> Option<Token<'source>> {
+        match self.lexer.next() {
+            Some(Ok(t)) => Some(t),
+            Some(Err(e)) => {
+                self.errors.push((&e).into());
+                self.next_token()
+            }
+            None => None,
+        }
+    }
+
+    fn peek_token(&mut self) -> Option<&Token<'source>> {
+        while let Some(Err(e)) = self.lexer.peek() {
+            self.errors.push(e.into());
+            self.next_token();
+        }
+        match self.lexer.peek() {
+            Some(Ok(t)) => Some(t),
+            None => None,
+            _ => unreachable!(),
+        }
+    }
+
     fn parse(&mut self) -> Program<'source> {
         let mut declarations = Vec::new();
 
         loop {
             if matches!(
-                self.lexer.peek(),
-                None | Some((Token::RBrace | Token::RParen, _))
+                self.peek_token().map(|t| t.kind),
+                None | Some(TokenKind::RBrace | TokenKind::RParen | TokenKind::Eof)
             ) {
-                self.lexer.next();
+                self.next_token();
                 break;
             };
             match self.parse_declaration() {
@@ -48,12 +70,12 @@ impl<'source> Parser<'source> {
         Program { declarations }
     }
 
-    fn expect_token(&mut self, token: Token) -> Result<(Token<'source>, Span), Diagnostic> {
-        match self.lexer.next() {
-            Some((t, span)) if token == t => Ok((t, span)),
-            Some((t, span)) => Err(Diagnostic::error(
-                span,
-                format!("Syntax error: Expected '{}', found '{}'", token, t),
+    fn expect_token(&mut self, token: TokenKind<'source>) -> Result<Token<'source>, Diagnostic> {
+        match self.next_token() {
+            Some(t) if token == t.kind => Ok(t),
+            Some(t) => Err(Diagnostic::error(
+                t.span,
+                format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
             )),
             None => todo!("Need an EOF span. Expected '{}'", token),
         }
@@ -61,12 +83,12 @@ impl<'source> Parser<'source> {
 
     fn expect_one_of_token(
         &mut self,
-        tokens: &[Token],
-    ) -> Result<(Token<'source>, Span), Diagnostic> {
-        match self.lexer.next() {
-            Some((t, span)) if tokens.contains(&t) => Ok((t, span)),
-            Some((t, span)) => Err(Diagnostic::error(
-                span,
+        tokens: &[TokenKind<'source>],
+    ) -> Result<Token<'source>, Diagnostic> {
+        match self.next_token() {
+            Some(t) if tokens.contains(&t.kind) => Ok(t),
+            Some(t) => Err(Diagnostic::error(
+                t.span,
                 format!(
                     "Syntax error: Expected one of {}, found '{}'",
                     tokens
@@ -74,48 +96,73 @@ impl<'source> Parser<'source> {
                         .map(|t| format!("'{}'", t))
                         .collect::<Vec<_>>()
                         .join(", "),
-                    t
+                    t.kind
                 ),
-            )),
+            )
+            .with_error_label(t.span, "here")),
             None => todo!("Need an EOF span"),
         }
     }
 
     fn parse_type(&mut self) -> Result<Type<'source>, Diagnostic> {
-        match self.lexer.next() {
-            Some((Token::Ident(i), span)) => Ok(Type {
+        match self.next_token().expect("Unexpected EOF") {
+            Token {
+                kind: TokenKind::Ident(i),
+                span,
+            } => Ok(Type {
                 span,
                 kind: TypeKind::Ident(Ident { inner: i, span }),
             }),
-            Some((Token::Int, span)) => Ok(Type {
+            Token {
+                kind: TokenKind::Int,
+                span,
+            } => Ok(Type {
                 kind: TypeKind::Int,
                 span,
             }),
-            Some((Token::Float, span)) => Ok(Type {
+            Token {
+                kind: TokenKind::Float,
+                span,
+            } => Ok(Type {
                 kind: TypeKind::Float,
                 span,
             }),
-            Some((Token::Bool, span)) => Ok(Type {
+            Token {
+                kind: TokenKind::Bool,
+                span,
+            } => Ok(Type {
                 kind: TypeKind::Bool,
                 span,
             }),
-            Some((Token::String, span)) => Ok(Type {
+            Token {
+                kind: TokenKind::String,
+                span,
+            } => Ok(Type {
                 kind: TypeKind::String,
                 span,
             }),
-            Some((Token::Void, span)) => Ok(Type {
+            Token {
+                kind: TokenKind::Void,
+                span,
+            } => Ok(Type {
                 kind: TypeKind::Void,
                 span,
             }),
-            Some((_, span)) => Err(Diagnostic::error(span, "expected type")),
-            None => Err(Diagnostic::error(Span::new(0, 0), "expected type")),
+            Token {
+                kind: TokenKind::Eof,
+                span,
+            } => Err(Diagnostic::error(span, "Unexpected EOF")),
+            Token { kind: _, span } => Err(Diagnostic::error(span, "expected type")),
         }
     }
 
     fn parse_maybe_pub(&mut self) -> bool {
-        match self.lexer.peek() {
-            Some((Token::Pub, _)) => {
-                self.lexer.next();
+        match self.peek_token() {
+            Some(Token {
+                kind: TokenKind::Pub,
+                ..
+            }) => {
+                self.next_token();
                 true
             }
             _ => false,
@@ -123,27 +170,30 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_ident(&mut self) -> Result<Ident<'source>, Diagnostic> {
-        match self.lexer.next() {
-            Some((Token::Ident(name), span)) => Ok(Ident { inner: name, span }),
-            Some((_, span)) => Err(Diagnostic::error(span, "expected identifier")),
-            None => {
-                // TODO: The tokens should know the last span
-                todo!()
-            }
+        match self.next_token().expect("Unexpected EOF") {
+            Token {
+                kind: TokenKind::Ident(name),
+                span,
+            } => Ok(Ident { inner: name, span }),
+            Token {
+                kind: TokenKind::Eof,
+                span,
+            } => Err(Diagnostic::error(span, "Unexpected EOF")),
+            Token { kind: _, span } => Err(Diagnostic::error(span, "expected identifier")),
         }
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration<'source>, Diagnostic> {
         let is_pub = self.parse_maybe_pub();
 
-        let Some((token, span)) = self.lexer.peek() else {
-            todo!("Need an EOF span")
-        };
+        let t = self.peek_token().expect("Unexpected EOF");
+        let kind = t.kind;
+        let span = t.span;
 
-        match token {
-            Token::Struct => {
+        match kind {
+            TokenKind::Struct => {
                 // Skip the peeked "struct"
-                self.lexer.next();
+                self.next_token();
 
                 // Check if there is a struct name
                 let name = self.parse_ident().map_err(|e| {
@@ -151,7 +201,7 @@ impl<'source> Parser<'source> {
                         .with_note("try giving the struct a name: `struct MyStruct {{}}`")
                 })?;
 
-                self.expect_token(Token::LBrace).map_err(|e| {
+                self.expect_token(TokenKind::LBrace).map_err(|e| {
                     e.with_note(format!(
                         "try giving the struct a body: `struct {} {{}}`",
                         name.inner,
@@ -162,9 +212,15 @@ impl<'source> Parser<'source> {
 
                 let mut fields: Vec<(Ident<'source>, Type<'source>)> = Vec::new();
                 loop {
-                    if matches!(self.lexer.peek(), Some((Token::RBrace, _))) {
+                    if matches!(
+                        self.peek_token(),
+                        Some(Token {
+                            kind: TokenKind::RBrace,
+                            ..
+                        })
+                    ) {
                         // struct end
-                        self.lexer.next();
+                        self.next_token();
                         break;
                     }
 
@@ -172,15 +228,19 @@ impl<'source> Parser<'source> {
                         e.with_help("Expected struct field name")
                             .with_note("try giving the field a name: `my_field: ...`")
                     })?;
-                    self.expect_token(Token::Colon)?;
+                    self.expect_token(TokenKind::Colon)?;
 
                     let ty = self.parse_type()?;
                     fields.push((param_name, ty));
 
-                    self.expect_token(Token::Comma)?;
-                    if let Some((Token::RBrace, span)) = self.lexer.peek() {
-                        struct_span = struct_span.merge(span);
-                        self.lexer.next();
+                    self.expect_token(TokenKind::Comma)?;
+                    if let Some(Token {
+                        kind: TokenKind::RBrace,
+                        span,
+                    }) = self.peek_token()
+                    {
+                        struct_span = struct_span.merge(*span);
+                        self.next_token();
                         break;
                     }
                 }
@@ -192,9 +252,9 @@ impl<'source> Parser<'source> {
                     public: is_pub,
                 }))
             }
-            Token::Enum => {
+            TokenKind::Enum => {
                 // Skip the peeked "enum"
-                self.lexer.next();
+                self.next_token();
 
                 // Check if there is an enum name
                 let name = self.parse_ident().map_err(|e| {
@@ -202,7 +262,7 @@ impl<'source> Parser<'source> {
                         .with_note("try giving the enum a name: `enum MyEnum {{}}`")
                 })?;
 
-                self.expect_token(Token::LBrace).map_err(|e| {
+                self.expect_token(TokenKind::LBrace).map_err(|e| {
                     e.with_note(format!(
                         "try giving the enum a body: `enum {} {{}}`",
                         name.inner,
@@ -213,9 +273,15 @@ impl<'source> Parser<'source> {
 
                 let mut variants: Vec<EnumVariant> = Vec::new();
                 loop {
-                    if matches!(self.lexer.peek(), Some((Token::RBrace, _))) {
+                    if matches!(
+                        self.peek_token(),
+                        Some(Token {
+                            kind: TokenKind::RBrace,
+                            ..
+                        })
+                    ) {
                         // enum end
-                        self.lexer.next();
+                        self.next_token();
                         break;
                     }
 
@@ -223,7 +289,7 @@ impl<'source> Parser<'source> {
                         e.with_help("Expected enum variant name")
                             .with_note("try giving the variant a name: `MyVariant ...`")
                     })?;
-                    self.expect_token(Token::Comma)?;
+                    self.expect_token(TokenKind::Comma)?;
 
                     variants.push(EnumVariant {
                         span: variant_name.span,
@@ -231,9 +297,13 @@ impl<'source> Parser<'source> {
                         fields: Vec::new(),
                     });
 
-                    if let Some((Token::RBrace, span)) = self.lexer.peek() {
-                        enum_span = enum_span.merge(span);
-                        self.lexer.next();
+                    if let Some(Token {
+                        kind: TokenKind::RBrace,
+                        span,
+                    }) = self.peek_token()
+                    {
+                        enum_span = enum_span.merge(*span);
+                        self.next_token();
                         break;
                     }
                 }
@@ -245,48 +315,54 @@ impl<'source> Parser<'source> {
                     public: is_pub,
                 }))
             }
-            Token::Fn => Ok(Declaration::Function(
+            TokenKind::Fn => Ok(Declaration::Function(
                 self.parse_function()?.set_public(is_pub),
             )),
-            Token::Use => {
+            TokenKind::Use => {
                 // Skip the peeked "use"
-                self.lexer.next();
+                self.next_token();
 
                 let namespace = self.parse_ident()?;
                 let mut import = vec![namespace];
 
                 // repeatedly parse `.submodule`
                 loop {
-                    match self.lexer.peek() {
+                    match self.peek_token() {
                         None => todo!("Need an EOF"),
-                        Some((Token::Semicolon, _)) => {
-                            self.lexer.next();
+                        Some(Token {
+                            kind: TokenKind::Semicolon,
+                            ..
+                        }) => {
+                            self.next_token();
                             break;
                         }
-                        Some((Token::Dot, _)) => {
-                            self.lexer.next();
+                        Some(Token {
+                            kind: TokenKind::Dot,
+                            ..
+                        }) => {
+                            self.next_token();
                             let submodule = self.parse_ident()?;
                             import.push(submodule);
                             continue;
                         }
-                        Some((_, s)) => {
-                            return Err(Diagnostic::error(s, "Unexpected token"));
+                        Some(Token { kind: _, span }) => {
+                            return Err(Diagnostic::error(*span, "Unexpected token"));
                         }
                     }
                 }
 
                 Ok(Declaration::Use { import })
             }
-            Token::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
-            Token::Return => Err(Diagnostic::error(span, "Unexpected return statement")),
+            TokenKind::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
+            TokenKind::Return => Err(Diagnostic::error(span, "Unexpected return statement")),
             x => Err(Diagnostic::error(span, format!("Unexpected '{}'", x))),
         }
     }
 
     fn parse_function(&mut self) -> Result<Function<'source>, Diagnostic> {
         // Skip the peeked "fn"
-        let (_, span) = self.lexer.next().unwrap();
-        let mut function_span = span;
+        let t = self.next_token().unwrap();
+        let mut function_span = t.span;
 
         // TODO: Handle anon functions
         let name = self.parse_ident().map_err(|e| {
@@ -300,11 +376,15 @@ impl<'source> Parser<'source> {
             .parse_type()
             .map_err(|e| e.with_note("expected function return type"))?;
 
-        let (_, lbrace_span) = self.expect_token(Token::LBrace)?;
+        let Token {
+            span: lbrace_span, ..
+        } = self.expect_token(TokenKind::LBrace)?;
 
         let statements = self.parse_statements()?;
 
-        let (_, rbrace_span) = self.expect_token(Token::RBrace)?;
+        let Token {
+            span: rbrace_span, ..
+        } = self.expect_token(TokenKind::RBrace)?;
         let block = Block {
             statements,
             span: lbrace_span.merge(rbrace_span),
@@ -322,12 +402,18 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_function_parameters(&mut self) -> Result<Vec<Param<'source>>, Diagnostic> {
-        self.expect_token(Token::LParen)?;
+        self.expect_token(TokenKind::LParen)?;
         let mut parameters = Vec::new();
 
-        if matches!(self.lexer.peek(), Some((Token::RParen, _))) {
+        if matches!(
+            self.peek_token(),
+            Some(Token {
+                kind: TokenKind::RParen,
+                ..
+            })
+        ) {
             // immediate parameter list end
-            self.lexer.next();
+            self.next_token();
             return Ok(parameters);
         }
 
@@ -337,7 +423,7 @@ impl<'source> Parser<'source> {
                 .map_err(|e| e.with_note("expected parameter name"))?;
             let param_span = param_name.span;
 
-            self.expect_token(Token::Colon)?;
+            self.expect_token(TokenKind::Colon)?;
 
             let ty = self.parse_type()?;
 
@@ -348,13 +434,13 @@ impl<'source> Parser<'source> {
                 default: None,
             });
 
-            let (token, _) = self
-                .expect_one_of_token(&[Token::RParen, Token::Comma])
+            let token = self
+                .expect_one_of_token(&[TokenKind::RParen, TokenKind::Comma])
                 .map_err(|e| {
                     e.with_note("Expected new parameter or a ) to end the parameter list")
                 })?;
 
-            if token == Token::RParen {
+            if token.kind == TokenKind::RParen {
                 break;
             }
         }
@@ -363,19 +449,23 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_statement(&mut self) -> Result<Statement<'source>, Diagnostic> {
-        let Some((token, span)) = self.lexer.peek() else {
+        let Some(token) = self.peek_token() else {
             todo!("Need an EOF span")
         };
-        let statement_span = span;
+        let statement_span = token.span;
 
-        match token {
-            Token::Let => {
+        match token.kind {
+            TokenKind::Let => {
                 // Skip the peeked 'let'
-                self.lexer.next();
+                self.next_token();
 
                 // Check if there is a mut
-                let mutable = if let Some((Token::Mut, _)) = self.lexer.peek() {
-                    self.lexer.next();
+                let mutable = if let Some(Token {
+                    kind: TokenKind::Mut,
+                    ..
+                }) = self.peek_token()
+                {
+                    self.next_token();
                     true
                 } else {
                     false
@@ -384,19 +474,23 @@ impl<'source> Parser<'source> {
                 let ident = self.parse_ident()?;
 
                 // Try and get type
-                let ty = if let Some((Token::Colon, _)) = self.lexer.peek() {
-                    self.lexer.next();
+                let ty = if let Some(Token {
+                    kind: TokenKind::Colon,
+                    ..
+                }) = self.peek_token()
+                {
+                    self.next_token();
                     let ty = self.parse_type()?;
                     Some(ty)
                 } else {
                     None
                 };
 
-                self.expect_token(Token::Equals)?;
+                self.expect_token(TokenKind::Eq)?;
 
                 let expression = self.parse_expression(0)?;
 
-                let (_, span) = self.expect_token(Token::Semicolon)?;
+                let Token { span, .. } = self.expect_token(TokenKind::Semicolon)?;
 
                 Ok(Statement::Let {
                     span: statement_span.merge(span),
@@ -406,20 +500,20 @@ impl<'source> Parser<'source> {
                     expr: expression,
                 })
             }
-            Token::Return => {
+            TokenKind::Return => {
                 // Skip the peeked "return"
-                self.lexer.next();
+                self.next_token();
 
                 let rhs = self.parse_expression(1)?;
-                let (_, span) = self.expect_token(Token::Semicolon)?;
+                let Token { span, .. } = self.expect_token(TokenKind::Semicolon)?;
                 Ok(Statement::Return {
                     span: statement_span.merge(span),
                     expr: Some(rhs),
                 })
             }
-            Token::Ident(_) => {
+            TokenKind::Ident(_) => {
                 let expr = self.parse_expression(0)?;
-                self.expect_token(Token::Semicolon)?;
+                self.expect_token(TokenKind::Semicolon)?;
                 Ok(Statement::Expr(expr))
             }
             t => Err(Diagnostic::error(
@@ -433,7 +527,13 @@ impl<'source> Parser<'source> {
         let mut statements = Vec::new();
 
         loop {
-            if matches!(self.lexer.peek(), None | Some((Token::RBrace, _))) {
+            if matches!(
+                self.peek_token(),
+                None | Some(Token {
+                    kind: TokenKind::RBrace,
+                    ..
+                })
+            ) {
                 break;
             };
 
@@ -444,25 +544,16 @@ impl<'source> Parser<'source> {
         Ok(statements)
     }
 
-    fn parse_string_literal_or_interpolation(
-        &mut self,
-        parts: Vec<(Token<'source>, Span)>,
-    ) -> Result<Expr<'source>, Diagnostic> {
-        if parts.is_empty() {
-            return Ok(Expr {
-                kind: ExprKind::StringLiteral(None),
-                // TODO:
-                span: Span::new(0, 0),
-            });
-        }
-        let mut string_interpolation_parser = Parser {
-            lexer: Lexer::new(parts),
-            errors: vec![],
-        };
-
+    fn parse_string_literal_or_interpolation(&mut self) -> Result<Expr<'source>, Diagnostic> {
         let mut exprs = Vec::new();
-        while string_interpolation_parser.lexer.peek().is_some() {
-            let e = string_interpolation_parser.parse_string_interpolation_expr(0)?;
+        while !matches!(
+            self.peek_token(),
+            Some(Token {
+                kind: TokenKind::StringInterpolationEnd,
+                ..
+            })
+        ) {
+            let e = self.parse_string_interpolation_expr(0)?;
             exprs.push(e);
         }
 
@@ -481,18 +572,18 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_string_interpolation_expr(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
-        let Some((token, span)) = self.lexer.next() else {
+        let Some(token) = self.next_token() else {
             todo!("Need an EOF span")
         };
-        let expr_span = span;
+        let expr_span = token.span;
 
-        match token {
-            Token::LBrace => {
+        match token.kind {
+            TokenKind::LBrace => {
                 let expr = self.parse_expression(min_bp)?;
-                self.lexer.next();
+                self.next_token();
                 Ok(expr)
             }
-            Token::StringFragment(s) => Ok(Expr {
+            TokenKind::StringLiteral(s) => Ok(Expr {
                 kind: ExprKind::StringLiteral(Some(s)),
                 span: expr_span,
             }),
@@ -504,36 +595,34 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
-        let Some((token, span)) = self.lexer.next() else {
+        let Some(token) = self.next_token() else {
             todo!("Need an EOF span")
         };
-        let expr_span = span;
+        let expr_span = token.span;
 
         // Create the initial lhs. Then we will, in a recursion like way update lhs to be the lhs with an op and a right side
-        let mut lhs = match token {
-            Token::IntLiteral(i) => Expr {
+        let mut lhs = match token.kind {
+            TokenKind::IntLiteral(i) => Expr {
                 kind: ExprKind::IntLiteral(i),
                 span: expr_span,
             },
-            Token::FloatLiteral(f) => Expr {
+            TokenKind::FloatLiteral(f) => Expr {
                 kind: ExprKind::FloatLiteral(f),
                 span: expr_span,
             },
-            Token::BoolLiteral(b) => Expr {
+            TokenKind::BoolLiteral(b) => Expr {
                 kind: ExprKind::BoolLiteral(b),
                 span: expr_span,
             },
-            Token::Ident(ident) => Expr {
+            TokenKind::Ident(ident) => Expr {
                 kind: ExprKind::Ident(Ident {
                     inner: ident,
                     span: expr_span,
                 }),
                 span: expr_span,
             },
-            Token::StringLiteralOrInterpolation(s) => {
-                self.parse_string_literal_or_interpolation(s)?
-            }
-            Token::StringFragment(s) => Expr {
+            TokenKind::StringInterpolationStart => self.parse_string_literal_or_interpolation()?,
+            TokenKind::StringLiteral(s) => Expr {
                 kind: ExprKind::StringLiteral(Some(s)),
                 span: expr_span,
             },
@@ -546,30 +635,40 @@ impl<'source> Parser<'source> {
         };
 
         loop {
-            let Some((op_token, span)) = self.lexer.peek() else {
+            let Some(op_token) = self.peek_token() else {
                 break;
             };
-            let expr_span = expr_span.merge(span);
+            let expr_span = expr_span.merge(op_token.span);
 
-            let op = match op_token {
-                Token::Semicolon | Token::RBrace | Token::Comma | Token::RParen => break,
-                Token::Plus => Op::Add,
-                Token::Minus => Op::Sub,
-                Token::Star => Op::Mul,
-                Token::Slash => Op::Div,
-                Token::StarStar => Op::Exp,
-                Token::Percent => Op::Mod,
-                Token::And => Op::And,
-                Token::Or => Op::Or,
-                Token::Lt => Op::Lt,
-                Token::LtEq => Op::LtEq,
-                Token::Gt => Op::Gt,
-                Token::GtEq => Op::GtEq,
-                Token::LParen => Op::Call,
-                Token::LBrace => Op::StructInstance,
-                Token::Dot => Op::FieldIndex,
-                _ => {
-                    return Err(Diagnostic::error(span, "expected an infix operator"));
+            let op = match op_token.kind {
+                TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Comma | TokenKind::RParen => {
+                    break;
+                }
+                TokenKind::Plus => Op::Add,
+                TokenKind::Minus => Op::Sub,
+                TokenKind::Star => Op::Mul,
+                TokenKind::Slash => Op::Div,
+                TokenKind::StarStar => Op::Exp,
+                TokenKind::Percent => Op::Mod,
+                TokenKind::And => Op::And,
+                TokenKind::Or => Op::Or,
+                TokenKind::Lt => Op::Lt,
+                TokenKind::LtEq => Op::LtEq,
+                TokenKind::Gt => Op::Gt,
+                TokenKind::GtEq => Op::GtEq,
+                TokenKind::LParen => Op::Call,
+                TokenKind::LBrace => Op::StructInstance,
+                TokenKind::Dot => Op::FieldIndex,
+                TokenKind::StringInterpolationEnd => {
+                    self.lexer.next();
+                    return Ok(lhs);
+                }
+                t => {
+                    return Err(Diagnostic::error(
+                        op_token.span,
+                        format!("expected an infix operator, got {}", t),
+                    )
+                    .with_error_label(op_token.span, "here"));
                 }
             };
 
@@ -581,7 +680,7 @@ impl<'source> Parser<'source> {
                 lhs = match op {
                     Op::Call => {
                         // Eat the '('
-                        self.lexer.next();
+                        self.next_token();
                         let args = self.parse_fn_call_arguments()?;
                         // TODO: extend expr_span
                         Expr {
@@ -613,7 +712,7 @@ impl<'source> Parser<'source> {
                     break;
                 }
                 // We only peeked before, consume it now.
-                self.lexer.next();
+                self.next_token();
 
                 lhs = match op {
                     Op::FieldIndex => {
@@ -658,20 +757,26 @@ impl<'source> Parser<'source> {
 
         // parent has already eaten left paren as the operator
 
-        if matches!(self.lexer.peek(), Some((Token::RParen, _))) {
+        if matches!(
+            self.peek_token(),
+            Some(Token {
+                kind: TokenKind::RParen,
+                ..
+            })
+        ) {
             // immediate argument list end
-            self.lexer.next();
+            self.next_token();
         } else {
             loop {
                 // let param_name = self.parse_ident()?;
-                // self.expect_token(Token::Equals)?;
+                // self.expect_token(TokenKind::Equals)?;
 
                 let value = self.parse_expression(0)?;
                 arguments.push(value);
 
-                let (token, _) = self.expect_one_of_token(&[Token::RParen, Token::Comma])?;
+                let token = self.expect_one_of_token(&[TokenKind::RParen, TokenKind::Comma])?;
 
-                if token == Token::RParen {
+                if token.kind == TokenKind::RParen {
                     break;
                 }
             }
@@ -685,28 +790,40 @@ impl<'source> Parser<'source> {
 
         // parent has already eaten left brace as the operator
 
-        if matches!(self.lexer.peek(), Some((Token::RBrace, _))) {
+        if matches!(
+            self.peek_token(),
+            Some(Token {
+                kind: TokenKind::RBrace,
+                ..
+            })
+        ) {
             // immediate argument list end
-            self.lexer.next();
+            self.next_token();
         } else {
             loop {
-                if matches!(self.lexer.peek(), Some((Token::RBrace, _))) {
+                if matches!(
+                    self.peek_token(),
+                    Some(Token {
+                        kind: TokenKind::RBrace,
+                        ..
+                    })
+                ) {
                     // struct end
-                    self.lexer.next();
+                    self.next_token();
                     break;
                 }
 
                 let field_name = self.parse_ident()?;
 
-                self.expect_token(Token::Equals)?;
+                self.expect_token(TokenKind::Eq)?;
 
                 let value = self.parse_expression(0)?;
 
                 fields.push((field_name, value));
 
-                let (token, _) = self.expect_one_of_token(&[Token::RBrace, Token::Comma])?;
+                let token = self.expect_one_of_token(&[TokenKind::RBrace, TokenKind::Comma])?;
 
-                if token == Token::RBrace {
+                if token.kind == TokenKind::RBrace {
                     break;
                 }
             }
