@@ -1,10 +1,8 @@
 #![allow(dead_code)]
-use std::num::{ParseFloatError, ParseIntError};
-
+use crate::lexing::YYC_INIT;
 use error::Diagnostic;
 use span::Span;
-
-use crate::lexing::YYC_INIT;
+use std::num::{ParseFloatError, ParseIntError};
 
 pub enum LexerErrorKind<'src> {
     ParseIntError(ParseIntError),

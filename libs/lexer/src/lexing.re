@@ -14,7 +14,6 @@ impl<'src> Iterator for Lexer<'src> {
 
         self.token = self.cursor;
 
-        println!("COND {}", self.cond);
         /*!re2c
         re2c:api                     = generic;
         re2c:yyfill:enable           = 0;
@@ -90,11 +89,10 @@ impl<'src> Iterator for Lexer<'src> {
         // Strings
         <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }
         <STRING> [^"\\{]+              { return self.token(TokenKind::StringLiteral(self.token_text())) }
-        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(self.token_text())); }
+        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(&self.input[(self.token + 1)..(self.token + 2)])); }
         <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
         // string end
-        <STRING> "\""                  => INIT { println!("4"); return self.token(TokenKind::StringInterpolationEnd) }
-        <STRING> * {panic!()}
+        <STRING> "\""                  => INIT { return self.token(TokenKind::StringInterpolationEnd) }
         
 
         // Identifiers
@@ -121,13 +119,15 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "\n"                    { return self.next() }
 
         // EOF
-        <INIT,STRING> $                       { self.eof = true; return self.token(TokenKind::Eof) }
+        <INIT, STRING> $                { self.eof = true; return self.token(TokenKind::Eof) }
 
         // Anything else
-        <INIT> *                       { println!("HERE {}", &self.input[self.token..(self.token + 5)]); return Some(Err(LexerError { span: self.span(), kind: LexerErrorKind::UnexpectedToken(self.token_text()) })) }
+        <INIT, STRING> *                       { return Some(Err(LexerError { span: self.span(), kind: LexerErrorKind::UnexpectedToken(self.token_text()) })) }
 
         */
     }
 }
 
-/*!conditions:re2c*/
+/*!conditions:re2c
+format = "pub const @@{cond}: usize = @@{num};\n";
+*/
