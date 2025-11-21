@@ -263,12 +263,5 @@ pub enum Declaration<'source> {
     Struct(Struct<'source>),
     Enum(Enum<'source>),
     Function(Function<'source>),
-    Use {
-        imports: Vec<UseImport<'source>>,
-    },
-    PubUse {
-        module: &'source str,
-        item: Option<&'source str>, // None means re-export all public items
-        alias: Option<&'source str>, // Optional rename
-    },
+    Use { imports: Vec<UseImport<'source>> },
 }

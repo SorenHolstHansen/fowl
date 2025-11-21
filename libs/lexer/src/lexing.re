@@ -46,7 +46,7 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "continue"              { return self.token(TokenKind::Continue) }
         <INIT> "in"                    { return self.token(TokenKind::In) }
         <INIT> "use"                   { return self.token(TokenKind::Use) }
-        <INIT> "pub"                   { return self.token(TokenKind::Pub) }
+        <INIT> "public"                { return self.token(TokenKind::Public) }
         <INIT> "match"                 { return self.token(TokenKind::Match) }
         <INIT> "none"                  { return self.token(TokenKind::None) }
         <INIT> "try"                   { return self.token(TokenKind::Try) }

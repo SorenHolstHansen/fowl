@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
 use error::emit_diagnostics;
+use fowl_jsonc::parse_fowl_jsonc;
 use lexer::tokenize;
 use parser::parser::parse;
 use std::{
@@ -31,7 +32,7 @@ pub struct FowlCli {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Lexes, parses, and executes the specified source file via the cached native pipeline.
-    Run { path: PathBuf },
+    Run,
     /// Builds a native executable from the specified source file.
     Build {
         path: PathBuf,
@@ -56,19 +57,46 @@ pub fn run() -> Result<()> {
     let settings = CompilerSettings::from(&cli);
 
     match &cli.command {
-        Command::Run { path } => handle_run(path, settings),
+        Command::Run => handle_run(settings),
         _ => todo!(),
     }
 }
 
-fn handle_run(path: &Path, settings: CompilerSettings) -> Result<()> {
-    let source = std::fs::read_to_string(path)?;
-    compile_pipeline(path, &source, settings)?;
+const FOWL_JSONC_NAME: &str = "fowl.jsonc";
+
+fn locate_project_root(from_path: PathBuf) -> Result<PathBuf> {
+    let mut project_root = from_path;
+    while !std::fs::exists(project_root.join(FOWL_JSONC_NAME))? {
+        if !project_root.pop() {
+            return Err(anyhow::anyhow!(
+                "Could not find fowl.jsonc in any parent directory"
+            ));
+        }
+    }
+
+    Ok(project_root)
+}
+
+fn handle_run(settings: CompilerSettings) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
+    let root = locate_project_root(current_dir)?;
+    let fowl_jsonc = {
+        let fowl_jsonc_src = std::fs::read_to_string(root.join(FOWL_JSONC_NAME))?;
+        parse_fowl_jsonc(&fowl_jsonc_src)?
+    };
+    println!("Building '{}@{}'", fowl_jsonc.name(), fowl_jsonc.version());
+
+    let path = root.join("src/main.fo");
+    let source = std::fs::read_to_string(&path)?;
+    let output = compile_pipeline(&path, &source, settings)?;
+
+    println!("Running '{}@{}'", fowl_jsonc.name(), fowl_jsonc.version());
+    execute_binary(&output);
 
     Ok(())
 }
 
-fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<()> {
+fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Result<PathBuf> {
     // Lexing step
     let lexer = tokenize(source);
     if settings.dump_tokens {
@@ -109,9 +137,8 @@ fn compile_pipeline(path: &Path, source: &str, settings: CompilerSettings) -> Re
     let codegen_options = settings.codegen_options()?;
     let output = PathBuf::from("./.fowl/tmp_binary");
     build_executable(&program, &output, &codegen_options)?;
-    execute_binary(&output);
 
-    Ok(())
+    Ok(output)
 }
 
 fn resolve_modules<'source>(program: &parser::ast::Program<'source>) -> Result<()> {

@@ -53,7 +53,6 @@ impl<'source> Typechecker<'source> {
                 Ok(typecheck_ast::Declaration::Function(f))
             }
             parser_ast::Declaration::Use { .. } => todo!(),
-            parser_ast::Declaration::PubUse { .. } => todo!(),
         }
     }
 

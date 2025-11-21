@@ -159,7 +159,7 @@ impl<'source> Parser<'source> {
     fn parse_maybe_pub(&mut self) -> bool {
         match self.peek_token() {
             Some(Token {
-                kind: TokenKind::Pub,
+                kind: TokenKind::Public,
                 ..
             }) => {
                 self.next_token();
