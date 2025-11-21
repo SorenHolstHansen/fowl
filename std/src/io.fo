@@ -1,0 +1,7 @@
+public fn print(message: string) void {
+	rt_print_str(message);
+}
+
+public fn println(message: string) void {
+	print("{message}\n");
+}

@@ -1,7 +1,0 @@
-pub fn print(message: string) void {
-	rt_print_str(message);
-}
-
-pub fn println(message: string) void {
-	print("{message}\n");
-}
