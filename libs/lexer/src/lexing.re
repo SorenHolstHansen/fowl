@@ -47,6 +47,8 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "in"                    { return self.token(TokenKind::In) }
         <INIT> "use"                   { return self.token(TokenKind::Use) }
         <INIT> "public"                { return self.token(TokenKind::Public) }
+        <INIT> "internal"              { return self.token(TokenKind::Internal) }
+        <INIT> "private"               { return self.token(TokenKind::Private) }
         <INIT> "match"                 { return self.token(TokenKind::Match) }
         <INIT> "none"                  { return self.token(TokenKind::None) }
         <INIT> "try"                   { return self.token(TokenKind::Try) }
@@ -117,7 +119,6 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "]"                     { return self.token(TokenKind::RBracket) }
         <INIT> ","                     { return self.token(TokenKind::Comma) }
         <INIT> "."                     { return self.token(TokenKind::Dot) }
-        <INIT> "?"                     { return self.token(TokenKind::QuestionMark) }
 
         // Line comments
         <INIT> "//"[^\x00\n]*          { return self.next() }

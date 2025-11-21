@@ -18,3 +18,5 @@ lexer = { workspace = true }
 parser = { workspace = true }
 span = { workspace = true }
 typecheck.workspace = true
+walkdir = "2.5.0"
+yansi = "1.0.1"

@@ -76,7 +76,8 @@ impl<'source> Parser<'source> {
             Some(t) => Err(Diagnostic::error(
                 t.span,
                 format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
-            )),
+            )
+            .with_error_label(t.span, "here")),
             None => todo!("Need an EOF span. Expected '{}'", token),
         }
     }

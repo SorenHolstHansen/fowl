@@ -1,3 +1,6 @@
+use simple.utils.add;
+
 fn main() int {
-	return 7;
+	let a = 5;
+	return add(a, 2);
 }

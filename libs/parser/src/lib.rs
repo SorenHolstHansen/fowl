@@ -8,7 +8,7 @@ mod test {
 
     #[test]
     fn test_parser() {
-        let source = include_str!("../../../examples/basic/kitchen_sink.fo");
+        let source = include_str!("../../../examples/simple/src/kitchen_sink.fo");
 
         let lexer = tokenize(source);
         let (program, _) = parser::parse(lexer);
