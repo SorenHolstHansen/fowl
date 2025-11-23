@@ -73,11 +73,14 @@ impl<'source> Parser<'source> {
     fn expect_token(&mut self, token: TokenKind<'source>) -> Result<Token<'source>, Diagnostic> {
         match self.next_token() {
             Some(t) if token == t.kind => Ok(t),
-            Some(t) => Err(Diagnostic::error(
-                t.span,
-                format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
-            )
-            .with_error_label(t.span, "here")),
+            Some(t) => {
+                panic!("HHH");
+                Err(Diagnostic::error(
+                    t.span,
+                    format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
+                )
+                .with_error_label(t.span, "here"))
+            }
             None => todo!("Need an EOF span. Expected '{}'", token),
         }
     }
@@ -347,7 +350,8 @@ impl<'source> Parser<'source> {
                             continue;
                         }
                         Some(Token { kind: _, span }) => {
-                            return Err(Diagnostic::error(*span, "Unexpected token"));
+                            return Err(Diagnostic::error(*span, "Unexpected token")
+                                .with_error_label(*span, "here"));
                         }
                     }
                 }
@@ -356,7 +360,8 @@ impl<'source> Parser<'source> {
             }
             TokenKind::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
             TokenKind::Return => Err(Diagnostic::error(span, "Unexpected return statement")),
-            x => Err(Diagnostic::error(span, format!("Unexpected '{}'", x))),
+            x => Err(Diagnostic::error(span, format!("Unexpected '{}'", x))
+                .with_error_label(span, "here")),
         }
     }
 
@@ -386,6 +391,13 @@ impl<'source> Parser<'source> {
         let Token {
             span: rbrace_span, ..
         } = self.expect_token(TokenKind::RBrace)?;
+        if let Some(Token {
+            kind: TokenKind::Semicolon,
+            ..
+        }) = self.peek_token()
+        {
+            self.lexer.next();
+        }
         let block = Block {
             statements,
             span: lbrace_span.merge(rbrace_span),

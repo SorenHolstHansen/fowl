@@ -16,6 +16,7 @@ pub struct Lexer<'src> {
     pub(crate) interpolation_depth: usize,
     pub(crate) eof: bool,
     pub(crate) peeked: Option<Result<Token<'src>, LexerError<'src>>>,
+    pub(crate) force_next_token: Option<Result<Token<'src>, LexerError<'src>>>,
 }
 
 impl<'src> Lexer<'src> {
@@ -29,6 +30,7 @@ impl<'src> Lexer<'src> {
             interpolation_depth: 0,
             eof: false,
             peeked: None,
+            force_next_token: None,
         }
     }
 }
@@ -61,10 +63,54 @@ impl<'src> Lexer<'src> {
         &mut self,
         kind: TokenKind<'src>,
     ) -> Option<Result<Token<'src>, LexerError<'src>>> {
-        Some(Ok(Token {
+        let res = Some(Ok(Token {
             kind,
             span: self.span(),
-        }))
+        }));
+        if kind == TokenKind::Eof {
+            return res;
+        }
+        let rest = &self.input[self.cursor..];
+        let mut next_is_newline = false;
+        for char in rest.chars() {
+            if char == '\n' {
+                next_is_newline = true;
+                break;
+            } else if char.is_whitespace() {
+                continue;
+            } else {
+                break;
+            }
+        }
+        if next_is_newline {
+            match kind {
+                TokenKind::Return
+                | TokenKind::Break
+                | TokenKind::Continue
+                | TokenKind::None
+                | TokenKind::Int
+                | TokenKind::Float
+                | TokenKind::String
+                | TokenKind::Bool
+                | TokenKind::Void
+                | TokenKind::Ident(_)
+                | TokenKind::IntLiteral(_)
+                | TokenKind::FloatLiteral(_)
+                | TokenKind::BoolLiteral(_)
+                | TokenKind::StringInterpolationEnd
+                | TokenKind::RParen
+                | TokenKind::RBrace
+                | TokenKind::RBracket => {
+                    self.force_next_token = Some(Ok(Token {
+                        kind: TokenKind::Semicolon,
+                        span: Span::new(self.cursor, self.cursor + 1),
+                    }))
+                }
+                _ => {}
+            }
+        }
+
+        res
     }
 
     pub(crate) fn token_text(&self) -> &'src str {

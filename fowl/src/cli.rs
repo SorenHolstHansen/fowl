@@ -114,7 +114,7 @@ fn compile_pipeline(
 
     let mut has_errors = false;
     let mut parsed_files = files.iter().map(|(path, src)| {
-        let lexer = tokenize(&src);
+        let lexer = tokenize(src);
         if settings.dump_tokens {
             println!("\n== {:?} Tokens ==", path);
             println!("{}", lexer.clone().pretty_string());
@@ -122,10 +122,7 @@ fn compile_pipeline(
 
         let (program, parser_errors) = parse(lexer);
         has_errors = !parser_errors.is_empty();
-        emit_diagnostics(
-            parser_errors.into_iter().map(|e| e.with_file(&path)),
-            source,
-        );
+        emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
         if settings.dump_ast {
             println!("\n== AST ==");
             println!("{:#?}", program);

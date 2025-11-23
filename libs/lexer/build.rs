@@ -11,7 +11,7 @@ fn main() {
             let version = version_res
                 .trim()
                 .split(' ')
-                .last()
+                .next_back()
                 .expect("Expected re2rust --version to print a version");
             if !version.starts_with("4") {
                 println!(

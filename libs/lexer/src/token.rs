@@ -83,7 +83,7 @@ pub enum TokenKind<'src> {
     Eof,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
     pub span: Span,

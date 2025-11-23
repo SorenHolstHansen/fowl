@@ -16,6 +16,9 @@ impl<'src> Iterator for Lexer<'src> {
         if let Some(next) = self.peeked.take() {
             return Some(next);
         }
+        if let Some(forced) = self.force_next_token.take() {
+            return Some(forced);
+        }
 
         if self.eof { return None }
 
