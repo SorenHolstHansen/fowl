@@ -1,6 +1,7 @@
 use super::ast as typecheck_ast;
 use error::Diagnostic;
 use parser::ast::{self as parser_ast};
+use span::Span;
 use std::collections::HashMap;
 use utils::a_or_an;
 
@@ -10,31 +11,82 @@ pub fn typecheck<'source>(
 ) -> (typecheck_ast::Program<'source>, Vec<Diagnostic>) {
     let mut typechecker = Typechecker {
         parsed_files: files.clone(),
-        typechecked_files: HashMap::new(),
+        typechecked_declarations: TypecheckedDeclarations::new(),
         errors: Vec::new(),
         program: typecheck_ast::Program {
             declarations: Vec::new(),
         },
         variables: HashMap::new(),
+        current_module_name: None,
+        context_name_mapping: HashMap::new(),
     };
 
-    typechecker.typecheck(files.get(&format!("{}.main", package_name)).unwrap());
+    typechecker.typecheck(&format!("{}.main", package_name));
 
     (typechecker.program, typechecker.errors)
 }
 
+struct TypecheckedDeclarations<'source> {
+    inner: HashMap<String, HashMap<String, typecheck_ast::Declaration<'source>>>,
+}
+
+impl<'source> TypecheckedDeclarations<'source> {
+    fn insert(
+        &mut self,
+        module_name: &str,
+        decl_name: &str,
+        decl: &typecheck_ast::Declaration<'source>,
+    ) {
+        self.inner
+            .entry(module_name.to_string())
+            .and_modify(|m| {
+                m.insert(decl_name.to_string(), decl.clone());
+            })
+            .or_insert_with(|| {
+                let mut hm = HashMap::new();
+                hm.insert(decl_name.to_string(), decl.clone());
+                hm
+            });
+    }
+
+    fn get(
+        &self,
+        module_name: &str,
+        decl_name: &str,
+    ) -> Option<&typecheck_ast::Declaration<'source>> {
+        self.inner.get(module_name).and_then(|i| i.get(decl_name))
+    }
+}
+
+impl<'source> TypecheckedDeclarations<'source> {
+    fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+}
+
 struct Typechecker<'source> {
     parsed_files: HashMap<String, parser_ast::Program<'source>>,
-    typechecked_files: HashMap<String, typecheck_ast::Program<'source>>,
+    typechecked_declarations: TypecheckedDeclarations<'source>,
     program: typecheck_ast::Program<'source>,
     errors: Vec<Diagnostic>,
     variables: HashMap<&'source str, typecheck_ast::TypeKind<'source>>,
+    current_module_name: Option<String>,
+    context_name_mapping: HashMap<String, String>,
 }
 
 impl<'source> Typechecker<'source> {
-    fn typecheck(&mut self, program: &parser_ast::Program<'source>) {
-        let mut declarations = Vec::with_capacity(program.declarations.len());
+    fn typecheck(&mut self, module: &str) {
+        println!("Typechecking {}", module);
+        let previous_module_name = self.current_module_name.clone();
+        self.current_module_name = Some(module.to_string());
+        let program = self.parsed_files.get(module).unwrap().clone();
+        self.typecheck_inner(&program);
+        self.current_module_name = previous_module_name;
+    }
 
+    fn typecheck_inner(&mut self, program: &parser_ast::Program<'source>) {
         for declaration in &program.declarations {
             let decl = match self.visit_declaration(&declaration) {
                 Ok(Some(decl)) => decl,
@@ -44,10 +96,8 @@ impl<'source> Typechecker<'source> {
                     continue;
                 }
             };
-            declarations.push(decl);
+            self.program.declarations.push(decl);
         }
-
-        self.program = typecheck_ast::Program { declarations };
     }
 
     fn visit_declaration(
@@ -58,25 +108,43 @@ impl<'source> Typechecker<'source> {
             parser_ast::Declaration::Struct(_) => todo!(),
             parser_ast::Declaration::Enum(_) => todo!(),
             parser_ast::Declaration::Function(function) => {
+                // TODO: visit function declaration first, and later visit its body
+                // to allow unordered definitions
                 let f = self.visit_function(function)?;
-                Ok(Some(typecheck_ast::Declaration::Function(f)))
+                let function_decl = typecheck_ast::Declaration::Function(f);
+                self.typechecked_declarations.insert(
+                    &self.current_module_name.as_ref().unwrap(),
+                    function.name.inner,
+                    &function_decl,
+                );
+                Ok(Some(function_decl))
             }
-            parser_ast::Declaration::Use { import } => {
+            parser_ast::Declaration::Use(use_) => {
+                let import = &use_.import.iter().map(|i| i.inner).collect::<Vec<_>>();
                 let last = import.last().unwrap();
-                let module = import[..(import.len() - 1)]
-                    .iter()
-                    .map(|i| i.inner)
-                    .collect::<Vec<_>>()
-                    .join(".");
+                let module = import[..(import.len() - 1)].join(".");
                 let mut module_name = module;
-                match self.parsed_files.get(&module_name) {
-                    Some(_) => {}
+                if self.parsed_files.get(&module_name).is_none() {
+                    module_name = format!("{}.{}", module_name, last);
+                };
+                if self.parsed_files.get(&module_name).is_none() {
+                    return Err(Diagnostic::error(
+                        Span::new(0, 0),
+                        format!("Unknown module {}", module_name),
+                    ));
+                }
+                // TODO: import the artifacts into the module
+                let decl = match self.typechecked_declarations.get(&module_name, last) {
+                    Some(p) => p,
                     None => {
-                        module_name = format!("{}.{}", module_name, last.inner);
+                        self.typecheck(&module_name);
+                        self.typechecked_declarations
+                            .get(&module_name, last)
+                            .unwrap()
                     }
                 };
-                // TODO: import the artifacts into the module
-                dbg!(module_name);
+                self.context_name_mapping
+                    .insert(last.to_string(), import.join("."));
                 Ok(None)
             }
         }
@@ -120,9 +188,18 @@ impl<'source> Typechecker<'source> {
             ));
         }
 
+        let name = if function.name.inner == "main" {
+            "main".to_string()
+        } else {
+            format!(
+                "{}.{}",
+                self.current_module_name.as_ref().unwrap(),
+                function.name.inner
+            )
+        };
         Ok(typecheck_ast::Function {
             span: function.span,
-            name: function.name.into(),
+            name,
             params,
             ret_ty,
             body,
@@ -295,8 +372,36 @@ impl<'source> Typechecker<'source> {
             }
             parser_ast::ExprKind::Unary { .. } => todo!(),
             parser_ast::ExprKind::Call(call) => {
-                dbg!(call);
-                todo!()
+                match &call.callee.kind {
+                    parser_ast::ExprKind::Ident(ident) => {
+                        if let Some(mapped) = self.context_name_mapping.get(ident.inner) {
+                            let split = mapped.split(".").collect::<Vec<_>>();
+                            let last = split.last().unwrap();
+                            let module = &split[..(split.len() - 1)].join(".");
+                            let decl = self.typechecked_declarations.get(module, last).unwrap();
+                            let func = match decl {
+                                typecheck_ast::Declaration::Function(function) => function,
+                                _ => todo!(),
+                            };
+                            return Ok(typecheck_ast::Expr::Call {
+                                ty: func.ret_ty,
+                                call: typecheck_ast::Call {
+                                    callee: mapped.to_string(),
+                                    args: call
+                                        .args
+                                        .iter()
+                                        .map(|arg| match self.visit_expr(arg) {
+                                            Ok(arg) => arg,
+                                            Err(e) => todo!(),
+                                        })
+                                        .collect(),
+                                },
+                            });
+                        }
+                        todo!()
+                    }
+                    _ => todo!(),
+                };
             }
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),

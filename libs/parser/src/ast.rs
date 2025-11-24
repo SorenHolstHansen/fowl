@@ -168,7 +168,7 @@ pub struct Expr<'source> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeKind<'source> {
     Ident(Ident<'source>),
     Int,
@@ -191,7 +191,7 @@ impl std::fmt::Display for TypeKind<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Type<'source> {
     pub span: Span,
     pub kind: TypeKind<'source>,
@@ -286,9 +286,14 @@ pub enum Statement<'source> {
 }
 
 #[derive(Debug, Clone)]
+pub struct Use<'source> {
+    pub import: Vec<Ident<'source>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Declaration<'source> {
     Struct(Struct<'source>),
     Enum(Enum<'source>),
     Function(Function<'source>),
-    Use { import: Vec<Ident<'source>> },
+    Use(Use<'source>),
 }

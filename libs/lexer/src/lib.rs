@@ -44,7 +44,7 @@ mod test {
 
     #[test]
     fn test_lexer() {
-        let source = include_str!("../../../examples/simple/src/kitchen_sink.fo");
+        let source = include_str!("../../../examples/kitchen_sink.fo");
 
         let mut lexer = tokenize(source);
 

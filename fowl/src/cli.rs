@@ -178,16 +178,6 @@ fn path_to_module_name(path: &Path, root: &Path, package_name: &str) -> String {
     format!("{}.{}", package_name, a)
 }
 
-fn resolve_modules<'source>(program: &parser::ast::Program<'source>) -> Result<()> {
-    for declaration in &program.declarations {
-        if let parser::ast::Declaration::Use { import } = declaration {
-            let namespace = import.first();
-        }
-    }
-
-    Ok(())
-}
-
 fn execute_binary(path: &Path) {
     let mut command = std::process::Command::new(path);
 

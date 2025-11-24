@@ -2,7 +2,7 @@ use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
-use crate::ast::{Expr, Vis};
+use crate::ast::{Expr, Use, Vis};
 use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
 use span::Span;
@@ -384,7 +384,7 @@ impl<'source> Parser<'source> {
                     }
                 }
 
-                Ok(Declaration::Use { import })
+                Ok(Declaration::Use(Use { import }))
             }
             TokenKind::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
             TokenKind::Return => Err(Diagnostic::error(span, "Unexpected return statement")),

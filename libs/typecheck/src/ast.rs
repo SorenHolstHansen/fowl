@@ -72,7 +72,7 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub struct Call<'source> {
-    pub callee: Box<Expr<'source>>,
+    pub callee: String,
     pub args: Vec<Expr<'source>>,
 }
 
@@ -198,7 +198,7 @@ impl From<parser::ast::Vis> for Vis {
 #[derive(Debug, Clone)]
 pub struct Function<'source> {
     pub span: Span,
-    pub name: Ident<'source>,
+    pub name: String,
     pub params: Vec<Param<'source>>,
     pub ret_ty: TypeKind<'source>,
     pub body: Block<'source>,

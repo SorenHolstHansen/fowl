@@ -105,7 +105,7 @@ impl Compiler {
             })
             .collect();
 
-        let has_main = functions.iter().any(|f| f.name.inner == "main");
+        let has_main = functions.iter().any(|f| f.name == "main");
         if !has_main {
             bail!("Please provide a 'main' function");
         }
@@ -130,12 +130,7 @@ impl Compiler {
     }
 
     fn lower_function_body(&mut self, function: &ast::Function) -> anyhow::Result<()> {
-        let func_id = match self
-            .module
-            .declarations()
-            .get_name(function.name.inner)
-            .unwrap()
-        {
+        let func_id = match self.module.declarations().get_name(&function.name).unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
         };
@@ -177,7 +172,7 @@ impl Compiler {
         };
         let function_id = self
             .module
-            .declare_function(function.name.inner, Linkage::Export, &sig)
+            .declare_function(&function.name, Linkage::Export, &sig)
             .unwrap();
 
         Ok(function_id)
@@ -289,27 +284,22 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn eval_call(&mut self, call: &ast::Call) -> anyhow::Result<Option<Value>> {
-        match &*call.callee {
-            ast::Expr::Ident { ident, .. } => {
-                let func_id = match self.module.declarations().get_name(ident.inner).unwrap() {
-                    cranelift_module::FuncOrDataId::Func(func_id) => func_id,
-                    cranelift_module::FuncOrDataId::Data(_) => todo!(),
-                };
-                let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
-                let mut args = Vec::with_capacity(call.args.len());
-                for arg in &call.args {
-                    args.push(
-                        self.eval_expr(arg)?
-                            .expect("Should have been caught in type checking, that this is void"),
-                    );
-                }
-                let call = self.builder.ins().call(local_callee, &args);
-                let inst_results = self.builder.inst_results(call);
-                Ok(inst_results.first().cloned())
-                // gn
-            }
-            _ => todo!(),
+        let func_id = match self.module.declarations().get_name(&call.callee).unwrap() {
+            cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+            cranelift_module::FuncOrDataId::Data(_) => todo!(),
+        };
+        let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
+        let mut args = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            args.push(
+                self.eval_expr(arg)?
+                    .expect("Should have been caught in type checking, that this is void"),
+            );
         }
+        let call = self.builder.ins().call(local_callee, &args);
+        let inst_results = self.builder.inst_results(call);
+        Ok(inst_results.first().cloned())
+        // gn
     }
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Option<Value>> {
