@@ -235,13 +235,13 @@ impl<'a> FunctionCompiler<'a> {
             .params
             .iter()
             .map(|p| {
-                let ty = type_from_ast(&p.ty.kind, &self.module).unwrap().unwrap();
+                let ty = type_from_ast(&p.ty.kind, self.module).unwrap().unwrap();
                 AbiParam::new(ty)
             })
             .collect();
 
         let ret_ty = AbiParam::new(
-            type_from_ast(&function.ret_ty, &self.module)
+            type_from_ast(&function.ret_ty, self.module)
                 .unwrap()
                 .unwrap(),
         );
@@ -262,7 +262,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.seal_block(block0);
         for (i, param) in function.params.iter().enumerate() {
             let val = self.builder.block_params(block0)[i];
-            let ty = type_from_ast(&param.ty.kind, &self.module)?.unwrap();
+            let ty = type_from_ast(&param.ty.kind, self.module)?.unwrap();
             let var = self
                 .variables
                 .entry(param.name.inner.to_string())
@@ -333,7 +333,7 @@ impl<'a> FunctionCompiler<'a> {
                 let var = self
                     .variables
                     .get(ident.inner)
-                    .expect(&format!("Could not find variable '{}'", ident.inner));
+                    .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
                 let v = self.builder.use_var(*var);
                 Ok(Some(v))
             }

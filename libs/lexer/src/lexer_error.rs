@@ -23,11 +23,11 @@ impl<'src> std::fmt::Display for LexerErrorKind<'src> {
 
 #[derive(Clone)]
 pub struct LexerError<'src> {
-    pub(crate) span: Span,
+    pub(crate) span: Span<'src>,
     pub(crate) kind: LexerErrorKind<'src>,
 }
 
-impl<'src> From<&LexerError<'src>> for Diagnostic {
+impl<'src> From<&LexerError<'src>> for Diagnostic<'src> {
     fn from(value: &LexerError<'src>) -> Self {
         let span = value.span;
         match &value.kind {

@@ -86,7 +86,7 @@ pub enum TokenKind<'src> {
 #[derive(Debug, Clone, Copy)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
-    pub span: Span,
+    pub span: Span<'src>,
 }
 
 impl std::fmt::Display for TokenKind<'_> {

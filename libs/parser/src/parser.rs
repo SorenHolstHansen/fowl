@@ -2,12 +2,11 @@ use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
-use crate::ast::{Expr, Use, Vis};
+use crate::ast::{BinaryOp, Expr, Use, Vis};
 use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
-use span::Span;
 
-pub fn parse<'source>(lexer: Lexer<'source>) -> (Program<'source>, Vec<Diagnostic>) {
+pub fn parse<'source>(lexer: Lexer<'source>) -> (Program<'source>, Vec<Diagnostic<'source>>) {
     let mut parser = Parser {
         lexer,
         errors: vec![],
@@ -20,7 +19,7 @@ pub fn parse<'source>(lexer: Lexer<'source>) -> (Program<'source>, Vec<Diagnosti
 
 struct Parser<'source> {
     lexer: Lexer<'source>,
-    errors: Vec<Diagnostic>,
+    errors: Vec<Diagnostic<'source>>,
 }
 
 impl<'source> Parser<'source> {
@@ -70,17 +69,17 @@ impl<'source> Parser<'source> {
         Program { declarations }
     }
 
-    fn expect_token(&mut self, token: TokenKind<'source>) -> Result<Token<'source>, Diagnostic> {
+    fn expect_token(
+        &mut self,
+        token: TokenKind<'source>,
+    ) -> Result<Token<'source>, Diagnostic<'source>> {
         match self.next_token() {
             Some(t) if token == t.kind => Ok(t),
-            Some(t) => {
-                // panic!("HHH");
-                Err(Diagnostic::error(
-                    t.span,
-                    format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
-                )
-                .with_error_label(t.span, "here"))
-            }
+            Some(t) => Err(Diagnostic::error(
+                t.span,
+                format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
+            )
+            .with_error_label(t.span, "here")),
             None => todo!("Need an EOF span. Expected '{}'", token),
         }
     }
@@ -88,7 +87,7 @@ impl<'source> Parser<'source> {
     fn expect_one_of_token(
         &mut self,
         tokens: &[TokenKind<'source>],
-    ) -> Result<Token<'source>, Diagnostic> {
+    ) -> Result<Token<'source>, Diagnostic<'source>> {
         match self.next_token() {
             Some(t) if tokens.contains(&t.kind) => Ok(t),
             Some(t) => Err(Diagnostic::error(
@@ -108,7 +107,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_type(&mut self) -> Result<Type<'source>, Diagnostic> {
+    fn parse_type(&mut self) -> Result<Type<'source>, Diagnostic<'source>> {
         match self.next_token().expect("Unexpected EOF") {
             Token {
                 kind: TokenKind::Ident(i),
@@ -187,7 +186,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_ident(&mut self) -> Result<Ident<'source>, Diagnostic> {
+    fn parse_ident(&mut self) -> Result<Ident<'source>, Diagnostic<'source>> {
         match self.next_token().expect("Unexpected EOF") {
             Token {
                 kind: TokenKind::Ident(name),
@@ -201,7 +200,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<Declaration<'source>, Diagnostic> {
+    fn parse_declaration(&mut self) -> Result<Declaration<'source>, Diagnostic<'source>> {
         let vis = self.parse_vis();
 
         let t = self.peek_token().expect("Unexpected EOF");
@@ -384,7 +383,11 @@ impl<'source> Parser<'source> {
                     }
                 }
 
-                Ok(Declaration::Use(Use { import }))
+                Ok(Declaration::Use(Use {
+                    import,
+                    // TODO:
+                    span,
+                }))
             }
             TokenKind::Let => Err(Diagnostic::error(span, "Unexpected let binding")),
             TokenKind::Return => Err(Diagnostic::error(span, "Unexpected return statement")),
@@ -393,7 +396,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_function(&mut self) -> Result<Function<'source>, Diagnostic> {
+    fn parse_function(&mut self) -> Result<Function<'source>, Diagnostic<'source>> {
         // Skip the peeked "fn"
         let t = self.next_token().unwrap();
         let mut function_span = t.span;
@@ -441,7 +444,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn parse_function_parameters(&mut self) -> Result<Vec<Param<'source>>, Diagnostic> {
+    fn parse_function_parameters(&mut self) -> Result<Vec<Param<'source>>, Diagnostic<'source>> {
         self.expect_token(TokenKind::LParen)?;
         let mut parameters = Vec::new();
 
@@ -488,7 +491,7 @@ impl<'source> Parser<'source> {
         Ok(parameters)
     }
 
-    fn parse_statement(&mut self) -> Result<Statement<'source>, Diagnostic> {
+    fn parse_statement(&mut self) -> Result<Statement<'source>, Diagnostic<'source>> {
         let Some(token) = self.peek_token() else {
             todo!("Need an EOF span")
         };
@@ -563,7 +566,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_statements(&mut self) -> Result<Vec<Statement<'source>>, Diagnostic> {
+    fn parse_statements(&mut self) -> Result<Vec<Statement<'source>>, Diagnostic<'source>> {
         let mut statements = Vec::new();
 
         loop {
@@ -584,7 +587,9 @@ impl<'source> Parser<'source> {
         Ok(statements)
     }
 
-    fn parse_string_literal_or_interpolation(&mut self) -> Result<Expr<'source>, Diagnostic> {
+    fn parse_string_literal_or_interpolation(
+        &mut self,
+    ) -> Result<Expr<'source>, Diagnostic<'source>> {
         let mut exprs = Vec::new();
         while !matches!(
             self.peek_token(),
@@ -605,13 +610,16 @@ impl<'source> Parser<'source> {
         }
 
         Ok(Expr {
-            kind: ExprKind::StringInterpolation(exprs),
             // TODO:
-            span: Span::new(0, 0),
+            span: exprs.first().unwrap().span,
+            kind: ExprKind::StringInterpolation(exprs),
         })
     }
 
-    fn parse_string_interpolation_expr(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
+    fn parse_string_interpolation_expr(
+        &mut self,
+        min_bp: u8,
+    ) -> Result<Expr<'source>, Diagnostic<'source>> {
         let Some(token) = self.next_token() else {
             todo!("Need an EOF span")
         };
@@ -634,7 +642,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic> {
+    fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'source>, Diagnostic<'source>> {
         let Some(token) = self.next_token() else {
             todo!("Need an EOF span")
         };
@@ -775,7 +783,7 @@ impl<'source> Parser<'source> {
                         let rhs = self.parse_expression(r_bp)?;
                         Expr {
                             kind: ExprKind::Binary {
-                                op: op.try_into()?,
+                                op: BinaryOp::from_op(op).unwrap(),
                                 left: Box::new(lhs),
                                 right: Box::new(rhs),
                             },
@@ -792,7 +800,7 @@ impl<'source> Parser<'source> {
         Ok(lhs)
     }
 
-    fn parse_fn_call_arguments(&mut self) -> Result<Vec<Expr<'source>>, Diagnostic> {
+    fn parse_fn_call_arguments(&mut self) -> Result<Vec<Expr<'source>>, Diagnostic<'source>> {
         let mut arguments = Vec::new();
 
         // parent has already eaten left paren as the operator
@@ -825,7 +833,9 @@ impl<'source> Parser<'source> {
         Ok(arguments)
     }
 
-    fn parse_struct_fields(&mut self) -> Result<Vec<(Ident<'source>, Expr<'source>)>, Diagnostic> {
+    fn parse_struct_fields(
+        &mut self,
+    ) -> Result<Vec<(Ident<'source>, Expr<'source>)>, Diagnostic<'source>> {
         let mut fields = Vec::new();
 
         // parent has already eaten left brace as the operator

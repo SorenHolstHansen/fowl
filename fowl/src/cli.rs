@@ -77,9 +77,7 @@ fn handle_run(settings: CompilerSettings) -> Result<()> {
     );
     let now = std::time::Instant::now();
 
-    let path = root.join("src/main.fo");
-    let source = std::fs::read_to_string(&path)?;
-    let output = compile_pipeline(&path, &root, &fowl_jsonc, &source, settings)?;
+    let output = compile_pipeline(&root, &fowl_jsonc, settings)?;
 
     println!(
         "\n{}:\nin: {:.2}s",
@@ -94,10 +92,8 @@ fn handle_run(settings: CompilerSettings) -> Result<()> {
 }
 
 fn compile_pipeline(
-    path: &Path,
     root: &Path,
     fowl_jsonc: &FowlJsonc,
-    source: &str,
     settings: CompilerSettings,
 ) -> Result<PathBuf> {
     // Read all src/**/*.fo files
@@ -117,7 +113,7 @@ fn compile_pipeline(
     let parsed_files = files
         .iter()
         .map(|(path, src)| {
-            let lexer = tokenize(src);
+            let lexer = tokenize(src, path);
             if settings.dump_tokens {
                 println!("\n== {:?} Tokens ==", path);
                 println!("{}", lexer.clone().pretty_string());
@@ -125,7 +121,7 @@ fn compile_pipeline(
 
             let (program, parser_errors) = parse(lexer);
             has_errors = !parser_errors.is_empty();
-            emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), src);
+            emit_diagnostics(parser_errors);
             if settings.dump_ast {
                 println!("\n== AST ==");
                 println!("{:#?}", program);
@@ -144,10 +140,7 @@ fn compile_pipeline(
     if !typecheck_errors.is_empty() {
         has_errors = true;
     }
-    emit_diagnostics(
-        typecheck_errors.into_iter().map(|e| e.with_file(path)),
-        source,
-    );
+    emit_diagnostics(typecheck_errors);
     if settings.dump_ast {
         println!("\n== TYPED AST ==");
         println!("{:#?}", program);

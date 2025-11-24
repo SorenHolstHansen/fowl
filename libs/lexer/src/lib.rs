@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::{fmt::Write, path::Path};
 mod token;
 pub use token::{Token, TokenKind};
 mod lexer;
@@ -34,8 +34,8 @@ fn pretty_print_tokens<'src>(lexer: Lexer<'src>, buf: &mut String) {
     }
 }
 
-pub fn tokenize<'src>(source: &'src str) -> Lexer<'src> {
-    Lexer::new(source)
+pub fn tokenize<'src>(source: &'src str, path: &'src Path) -> Lexer<'src> {
+    Lexer::new(source, path)
 }
 
 #[cfg(test)]
@@ -44,9 +44,10 @@ mod test {
 
     #[test]
     fn test_lexer() {
+        let path = PathBuf::new("../../../examples/kitchen_sink.fo");
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
-        let mut lexer = tokenize(source);
+        let mut lexer = tokenize(source, path);
 
         let mut previous = match lexer.next() {
             Some(Ok(t)) => t,

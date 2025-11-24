@@ -1,16 +1,14 @@
-use crate::ast::Vis;
-
 use super::ast as typecheck_ast;
+use crate::ast::Vis;
 use error::Diagnostic;
 use parser::ast::{self as parser_ast};
-use span::Span;
 use std::collections::HashMap;
 use utils::a_or_an;
 
 pub fn typecheck<'source>(
     files: HashMap<String, parser_ast::Program<'source>>,
     package_name: &str,
-) -> (typecheck_ast::Program<'source>, Vec<Diagnostic>) {
+) -> (typecheck_ast::Program<'source>, Vec<Diagnostic<'source>>) {
     let mut typechecker = Typechecker {
         parsed_files: files.clone(),
         typechecked_declarations: TypecheckedDeclarations::new(),
@@ -72,7 +70,7 @@ struct Typechecker<'source> {
     parsed_files: HashMap<String, parser_ast::Program<'source>>,
     typechecked_declarations: TypecheckedDeclarations<'source>,
     program: typecheck_ast::Program<'source>,
-    errors: Vec<Diagnostic>,
+    errors: Vec<Diagnostic<'source>>,
     variables: HashMap<&'source str, typecheck_ast::TypeKind<'source>>,
     current_module_name: Option<String>,
     context_name_mapping: HashMap<String, String>,
@@ -89,7 +87,7 @@ impl<'source> Typechecker<'source> {
 
     fn typecheck_inner(&mut self, program: &parser_ast::Program<'source>) {
         for declaration in &program.declarations {
-            let decl = match self.visit_declaration(&declaration) {
+            let decl = match self.visit_declaration(declaration) {
                 Ok(Some(decl)) => decl,
                 Ok(None) => continue,
                 Err(e) => {
@@ -104,7 +102,7 @@ impl<'source> Typechecker<'source> {
     fn visit_declaration(
         &mut self,
         declaration: &parser_ast::Declaration<'source>,
-    ) -> Result<Option<typecheck_ast::Declaration<'source>>, Diagnostic> {
+    ) -> Result<Option<typecheck_ast::Declaration<'source>>, Diagnostic<'source>> {
         match declaration {
             parser_ast::Declaration::Struct(_) => todo!(),
             parser_ast::Declaration::Enum(_) => todo!(),
@@ -114,7 +112,7 @@ impl<'source> Typechecker<'source> {
                 let f = self.visit_function(function)?;
                 let function_decl = typecheck_ast::Declaration::Function(f);
                 self.typechecked_declarations.insert(
-                    &self.current_module_name.as_ref().unwrap(),
+                    self.current_module_name.as_ref().unwrap(),
                     function.name.inner,
                     &function_decl,
                 );
@@ -125,12 +123,12 @@ impl<'source> Typechecker<'source> {
                 let last = import.last().unwrap();
                 let module = import[..(import.len() - 1)].join(".");
                 let mut module_name = module;
-                if self.parsed_files.get(&module_name).is_none() {
+                if !self.parsed_files.contains_key(&module_name) {
                     module_name = format!("{}.{}", module_name, last);
                 };
-                if self.parsed_files.get(&module_name).is_none() {
+                if !self.parsed_files.contains_key(&module_name) {
                     return Err(Diagnostic::error(
-                        Span::new(0, 0),
+                        use_.span,
                         format!("Unknown module {}", module_name),
                     ));
                 }
@@ -154,7 +152,7 @@ impl<'source> Typechecker<'source> {
     fn visit_function(
         &mut self,
         function: &parser_ast::Function<'source>,
-    ) -> Result<typecheck_ast::Function<'source>, Diagnostic> {
+    ) -> Result<typecheck_ast::Function<'source>, Diagnostic<'source>> {
         let mut params = Vec::with_capacity(function.params.len());
         for param in &function.params {
             let ty = self.visit_type(&param.ty)?;
@@ -169,9 +167,10 @@ impl<'source> Typechecker<'source> {
 
         let body = self.visit_block(&function.body)?;
 
-        let ret_ty = body.ty.clone();
+        let ret_ty = body.ty;
         let defined_ret_ty = self.visit_type(&function.ret_ty)?;
         if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
+            let span = function.body.statements.last().unwrap().span();
             return Err(Diagnostic::error(
                 function.ret_ty.span,
                 "Mismatched return type of function",
@@ -181,7 +180,7 @@ impl<'source> Typechecker<'source> {
                 format!("Return type defined as {}", function.ret_ty.kind),
             )
             .with_error_label(
-                body.statements.last().unwrap().span(),
+                *span,
                 format!(
                     "Mismatched types. Expected '{}' found '{}'",
                     function.ret_ty.kind, ret_ty
@@ -211,7 +210,7 @@ impl<'source> Typechecker<'source> {
     fn visit_block(
         &mut self,
         block: &parser_ast::Block<'source>,
-    ) -> Result<typecheck_ast::Block<'source>, Diagnostic> {
+    ) -> Result<typecheck_ast::Block<'source>, Diagnostic<'source>> {
         let mut statements = Vec::with_capacity(block.statements.len());
 
         for statement in &block.statements {
@@ -221,7 +220,7 @@ impl<'source> Typechecker<'source> {
         let ty = statements
             .last()
             .map(|stmt| match stmt {
-                typecheck_ast::Statement::Return { ty, .. } => ty.clone(),
+                typecheck_ast::Statement::Return { ty, .. } => *ty,
                 _ => typecheck_ast::TypeKind::Void,
             })
             .unwrap_or(typecheck_ast::TypeKind::Void);
@@ -236,7 +235,7 @@ impl<'source> Typechecker<'source> {
     fn visit_statement(
         &mut self,
         statement: &parser_ast::Statement<'source>,
-    ) -> Result<typecheck_ast::Statement<'source>, Diagnostic> {
+    ) -> Result<typecheck_ast::Statement<'source>, Diagnostic<'source>> {
         match statement {
             parser_ast::Statement::Let {
                 name,
@@ -248,8 +247,8 @@ impl<'source> Typechecker<'source> {
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that ty and expr.ty match
                 let name: typecheck_ast::Ident<'source> = (*name).into();
-                let ty = expr.ty().clone();
-                self.variables.insert(name.inner, ty.clone());
+                let ty = *expr.ty();
+                self.variables.insert(name.inner, ty);
                 Ok(typecheck_ast::Statement::Let {
                     name,
                     ty,
@@ -268,7 +267,7 @@ impl<'source> Typechecker<'source> {
                     let expr = self.visit_expr(expr)?;
                     Ok(typecheck_ast::Statement::Return {
                         span: *span,
-                        ty: expr.ty().clone(),
+                        ty: *expr.ty(),
                         expr: Some(expr),
                     })
                 }
@@ -283,7 +282,7 @@ impl<'source> Typechecker<'source> {
     fn visit_expr(
         &mut self,
         expr: &parser_ast::Expr<'source>,
-    ) -> Result<typecheck_ast::Expr<'source>, Diagnostic> {
+    ) -> Result<typecheck_ast::Expr<'source>, Diagnostic<'source>> {
         match &expr.kind {
             parser_ast::ExprKind::IntLiteral(i) => Ok(typecheck_ast::Expr::IntLiteral(*i)),
             parser_ast::ExprKind::FloatLiteral(f) => Ok(typecheck_ast::Expr::FloatLiteral(*f)),
@@ -292,11 +291,10 @@ impl<'source> Typechecker<'source> {
             parser_ast::ExprKind::StringInterpolation(_) => todo!(),
             parser_ast::ExprKind::Ident(i) => {
                 let ident: typecheck_ast::Ident<'source> = (*i).into();
-                let ty = self
+                let ty = *self
                     .variables
                     .get(&ident.inner)
-                    .expect(&format!("Could not find variable '{}'", ident.inner))
-                    .clone();
+                    .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
                 Ok(typecheck_ast::Expr::Ident { ident, ty })
             }
             parser_ast::ExprKind::Binary { op, left, right } => {
@@ -366,7 +364,7 @@ impl<'source> Typechecker<'source> {
                 }
                 Ok(typecheck_ast::Expr::Binary {
                     op: (*op).into(),
-                    ty: left_expr.ty().clone(),
+                    ty: *left_expr.ty(),
                     left: Box::new(left_expr),
                     right: Box::new(right_expr),
                 })
@@ -389,7 +387,9 @@ impl<'source> Typechecker<'source> {
                                     call.callee.span,
                                     "Private function",
                                 )
-                                .with_error_label(func.span, "Function defined here"));
+                                .with_error_label(call.callee.span, "This function is private")
+                                .with_info_label(func.span, "Function defined here")
+                                .with_help("make the function `internal` or `public` to use it"));
                             }
                             return Ok(typecheck_ast::Expr::Call {
                                 ty: func.ret_ty,
@@ -439,7 +439,7 @@ impl<'source> Typechecker<'source> {
     fn visit_type(
         &mut self,
         ty: &parser_ast::Type<'source>,
-    ) -> Result<typecheck_ast::Type<'source>, Diagnostic> {
+    ) -> Result<typecheck_ast::Type<'source>, Diagnostic<'source>> {
         let kind = match &ty.kind {
             parser_ast::TypeKind::Ident(ident) => typecheck_ast::TypeKind::Ident((*ident).into()),
             parser_ast::TypeKind::Int => typecheck_ast::TypeKind::Int,

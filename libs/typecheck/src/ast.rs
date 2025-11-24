@@ -8,7 +8,7 @@ pub struct Program<'source> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ident<'source> {
     pub inner: &'source str,
-    pub span: Span,
+    pub span: Span<'source>,
 }
 
 impl<'source> From<parser::ast::Ident<'source>> for Ident<'source> {
@@ -159,13 +159,13 @@ impl std::fmt::Display for TypeKind<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub kind: TypeKind<'source>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub name: Ident<'source>,
     pub ty: Type<'source>,
     pub default: Option<Expr<'source>>,
@@ -173,7 +173,7 @@ pub struct Param<'source> {
 
 #[derive(Debug, Clone)]
 pub struct Block<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub statements: Vec<Statement<'source>>,
     pub ty: TypeKind<'source>,
 }
@@ -197,7 +197,7 @@ impl From<parser::ast::Vis> for Vis {
 
 #[derive(Debug, Clone)]
 pub struct Function<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub name: String,
     pub params: Vec<Param<'source>>,
     pub ret_ty: TypeKind<'source>,
@@ -214,14 +214,14 @@ impl<'source> Function<'source> {
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub name: Ident<'source>,
     pub fields: Vec<Type<'source>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Struct<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub name: Ident<'source>,
     pub fields: Vec<(Ident<'source>, Type<'source>)>,
     pub vis: Vis,
@@ -229,7 +229,7 @@ pub struct Struct<'source> {
 
 #[derive(Debug, Clone)]
 pub struct Enum<'source> {
-    pub span: Span,
+    pub span: Span<'source>,
     pub name: Ident<'source>,
     pub variants: Vec<EnumVariant<'source>>,
     pub vis: Vis,
@@ -242,10 +242,10 @@ pub enum Statement<'source> {
         ty: TypeKind<'source>,
         expr: Expr<'source>,
         mutable: bool,
-        span: Span,
+        span: Span<'source>,
     },
     Return {
-        span: Span,
+        span: Span<'source>,
         expr: Option<Expr<'source>>,
         ty: TypeKind<'source>,
     },
@@ -257,7 +257,7 @@ pub enum Statement<'source> {
 }
 
 impl<'source> Statement<'source> {
-    pub fn span(&self) -> Span {
+    pub fn span(&'_ self) -> Span<'_> {
         match self {
             Statement::Let { span, .. } => *span,
             Statement::Return { span, .. } => *span,
