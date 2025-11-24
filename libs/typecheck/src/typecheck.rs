@@ -1,35 +1,44 @@
 use super::ast as typecheck_ast;
 use error::Diagnostic;
-use parser::ast as parser_ast;
+use parser::ast::{self as parser_ast};
 use std::collections::HashMap;
 use utils::a_or_an;
 
 pub fn typecheck<'source>(
-    program: parser_ast::Program<'source>,
+    files: HashMap<String, parser_ast::Program<'source>>,
+    package_name: &str,
 ) -> (typecheck_ast::Program<'source>, Vec<Diagnostic>) {
     let mut typechecker = Typechecker {
+        parsed_files: files.clone(),
+        typechecked_files: HashMap::new(),
         errors: Vec::new(),
+        program: typecheck_ast::Program {
+            declarations: Vec::new(),
+        },
         variables: HashMap::new(),
     };
 
-    typechecker.typecheck(program)
+    typechecker.typecheck(files.get(&format!("{}.main", package_name)).unwrap());
+
+    (typechecker.program, typechecker.errors)
 }
 
 struct Typechecker<'source> {
+    parsed_files: HashMap<String, parser_ast::Program<'source>>,
+    typechecked_files: HashMap<String, typecheck_ast::Program<'source>>,
+    program: typecheck_ast::Program<'source>,
     errors: Vec<Diagnostic>,
     variables: HashMap<&'source str, typecheck_ast::TypeKind<'source>>,
 }
 
 impl<'source> Typechecker<'source> {
-    fn typecheck(
-        &mut self,
-        program: parser_ast::Program<'source>,
-    ) -> (typecheck_ast::Program<'source>, Vec<Diagnostic>) {
+    fn typecheck(&mut self, program: &parser_ast::Program<'source>) {
         let mut declarations = Vec::with_capacity(program.declarations.len());
 
-        for declaration in program.declarations {
+        for declaration in &program.declarations {
             let decl = match self.visit_declaration(&declaration) {
-                Ok(decl) => decl,
+                Ok(Some(decl)) => decl,
+                Ok(None) => continue,
                 Err(e) => {
                     self.errors.push(e);
                     continue;
@@ -38,21 +47,38 @@ impl<'source> Typechecker<'source> {
             declarations.push(decl);
         }
 
-        (typecheck_ast::Program { declarations }, self.errors.clone())
+        self.program = typecheck_ast::Program { declarations };
     }
 
     fn visit_declaration(
         &mut self,
         declaration: &parser_ast::Declaration<'source>,
-    ) -> Result<typecheck_ast::Declaration<'source>, Diagnostic> {
+    ) -> Result<Option<typecheck_ast::Declaration<'source>>, Diagnostic> {
         match declaration {
             parser_ast::Declaration::Struct(_) => todo!(),
             parser_ast::Declaration::Enum(_) => todo!(),
             parser_ast::Declaration::Function(function) => {
                 let f = self.visit_function(function)?;
-                Ok(typecheck_ast::Declaration::Function(f))
+                Ok(Some(typecheck_ast::Declaration::Function(f)))
             }
-            parser_ast::Declaration::Use { .. } => todo!(),
+            parser_ast::Declaration::Use { import } => {
+                let last = import.last().unwrap();
+                let module = import[..(import.len() - 1)]
+                    .iter()
+                    .map(|i| i.inner)
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let mut module_name = module;
+                match self.parsed_files.get(&module_name) {
+                    Some(_) => {}
+                    None => {
+                        module_name = format!("{}.{}", module_name, last.inner);
+                    }
+                };
+                // TODO: import the artifacts into the module
+                dbg!(module_name);
+                Ok(None)
+            }
         }
     }
 
@@ -268,7 +294,10 @@ impl<'source> Typechecker<'source> {
                 })
             }
             parser_ast::ExprKind::Unary { .. } => todo!(),
-            parser_ast::ExprKind::Call(_) => todo!(),
+            parser_ast::ExprKind::Call(call) => {
+                dbg!(call);
+                todo!()
+            }
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),
         }

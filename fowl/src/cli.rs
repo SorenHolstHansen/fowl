@@ -6,6 +6,7 @@ use fowl_jsonc::{FowlJsonc, parse_fowl_jsonc};
 use lexer::tokenize;
 use parser::parser::parse;
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -130,16 +131,16 @@ fn compile_pipeline(
                 println!("{:#?}", program);
             }
 
-            (path, program)
+            let module_name = path_to_module_name(path, root, fowl_jsonc.name());
+            (module_name, program)
         })
-        .collect::<Vec<_>>();
+        .collect::<HashMap<_, _>>();
 
     // Module step
     // resolve_modules(&program)?;
 
     // Type checker step
-    let first = parsed_files.first().unwrap();
-    let (program, typecheck_errors) = typecheck::typecheck(first.1.clone());
+    let (program, typecheck_errors) = typecheck::typecheck(parsed_files, fowl_jsonc.name());
     if !typecheck_errors.is_empty() {
         has_errors = true;
     }
@@ -162,6 +163,19 @@ fn compile_pipeline(
     build_executable(&program, &output, &codegen_options)?;
 
     Ok(output)
+}
+
+fn path_to_module_name(path: &Path, root: &Path, package_name: &str) -> String {
+    let other = path
+        .strip_prefix(root.join("src"))
+        .unwrap()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+
+    let a = other.split("/").collect::<Vec<_>>().join(".");
+    format!("{}.{}", package_name, a)
 }
 
 fn resolve_modules<'source>(program: &parser::ast::Program<'source>) -> Result<()> {

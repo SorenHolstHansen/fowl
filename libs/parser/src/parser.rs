@@ -398,7 +398,6 @@ impl<'source> Parser<'source> {
         let t = self.next_token().unwrap();
         let mut function_span = t.span;
 
-        // TODO: Handle anon functions
         let name = self.parse_ident().map_err(|e| {
             e.with_help("Expected function name")
                 .with_note("try giving the function a name: `fn my_function() ...`")
