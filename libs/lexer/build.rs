@@ -1,4 +1,7 @@
 fn main() {
+    if std::env::var("SKIP_LEXER_BUILD_SCRIPT").unwrap() == "true" {
+        return;
+    }
     // Tell Cargo that if the given file changes, to rerun this build script.
     println!("cargo::rerun-if-changed=src/lexing.re");
 
@@ -32,11 +35,5 @@ fn main() {
         "--no-unsafe",
         "--start-conditions",
     ]);
-    match cmd.output() {
-        Ok(_) => {}
-        Err(e) => {
-            println!("cargo::error={e:?}");
-            panic!()
-        }
-    }
+    cmd.output().expect("re2rust cmd failed");
 }

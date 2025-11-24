@@ -218,6 +218,13 @@ impl<'source> Block<'source> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Vis {
+    Public,
+    Internal,
+    Private,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function<'source> {
     pub span: Span,
@@ -225,12 +232,12 @@ pub struct Function<'source> {
     pub params: Vec<Param<'source>>,
     pub ret_ty: Type<'source>,
     pub body: Block<'source>,
-    pub public: bool,
+    pub vis: Vis,
 }
 
 impl<'source> Function<'source> {
-    pub fn set_public(mut self, public: bool) -> Self {
-        self.public = public;
+    pub fn set_vis(mut self, vis: Vis) -> Self {
+        self.vis = vis;
         self
     }
 }
@@ -247,7 +254,7 @@ pub struct Struct<'source> {
     pub span: Span,
     pub name: Ident<'source>,
     pub fields: Vec<(Ident<'source>, Type<'source>)>,
-    pub public: bool,
+    pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]
@@ -255,7 +262,7 @@ pub struct Enum<'source> {
     pub span: Span,
     pub name: Ident<'source>,
     pub variants: Vec<EnumVariant<'source>>,
-    pub public: bool,
+    pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]

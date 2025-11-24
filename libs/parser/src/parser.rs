@@ -2,7 +2,7 @@ use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
-use crate::ast::Expr;
+use crate::ast::{Expr, Vis};
 use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
 use span::Span;
@@ -160,24 +160,30 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_maybe_vis(&mut self) -> bool {
+    fn parse_vis(&mut self) -> Vis {
         match self.peek_token() {
             Some(Token {
                 kind: TokenKind::Public,
                 ..
             }) => {
                 self.lexer.next();
-                true
+                Vis::Public
             }
             Some(Token {
                 kind: TokenKind::Internal,
                 ..
             }) => {
-                // TODO: change this
                 self.lexer.next();
-                true
+                Vis::Internal
             }
-            _ => false,
+            Some(Token {
+                kind: TokenKind::Private,
+                ..
+            }) => {
+                self.lexer.next();
+                Vis::Private
+            }
+            _ => Vis::Private,
         }
     }
 
@@ -196,7 +202,7 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration<'source>, Diagnostic> {
-        let is_pub = self.parse_maybe_vis();
+        let vis = self.parse_vis();
 
         let t = self.peek_token().expect("Unexpected EOF");
         let kind = t.kind;
@@ -268,7 +274,7 @@ impl<'source> Parser<'source> {
                     span: struct_span,
                     name,
                     fields,
-                    public: is_pub,
+                    vis,
                 }))
             }
             TokenKind::Enum => {
@@ -340,12 +346,10 @@ impl<'source> Parser<'source> {
                     variants,
                     span: enum_span,
                     name,
-                    public: is_pub,
+                    vis,
                 }))
             }
-            TokenKind::Fn => Ok(Declaration::Function(
-                self.parse_function()?.set_public(is_pub),
-            )),
+            TokenKind::Fn => Ok(Declaration::Function(self.parse_function()?.set_vis(vis))),
             TokenKind::Use => {
                 // Skip the peeked "use"
                 self.next_token();
@@ -434,7 +438,7 @@ impl<'source> Parser<'source> {
             ret_ty,
             params,
             body: block,
-            public: false,
+            vis: Vis::Private,
         })
     }
 

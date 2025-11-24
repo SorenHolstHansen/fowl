@@ -105,6 +105,11 @@ impl Compiler {
             })
             .collect();
 
+        let has_main = functions.iter().any(|f| f.name.inner == "main");
+        if !has_main {
+            bail!("Please provide a 'main' function");
+        }
+
         if functions.is_empty() {
             bail!("program contains no functions");
         }
@@ -229,20 +234,44 @@ impl<'a> FunctionCompiler<'a> {
     fn compile(&mut self, function: &ast::Function) -> anyhow::Result<()> {
         let call_conv = self.isa.default_call_conv();
 
+        let params = function
+            .params
+            .iter()
+            .map(|p| {
+                let ty = type_from_ast(&p.ty.kind, &self.module).unwrap().unwrap();
+                AbiParam::new(ty)
+            })
+            .collect();
+
+        let ret_ty = AbiParam::new(
+            type_from_ast(&function.ret_ty, &self.module)
+                .unwrap()
+                .unwrap(),
+        );
+
         self.builder.func.signature = Signature {
             call_conv,
-            params: vec![],
-            // Since we're linking to libc, we can return the exit code from main.
-            returns: vec![AbiParam::new(types::I64)],
+            params,
+            returns: vec![ret_ty],
         };
 
         // Create the functions entry block.
         let block0 = self.builder.create_block();
+        self.builder.append_block_params_for_function_params(block0);
         self.builder.switch_to_block(block0);
 
         // When we know that there are no more other blocks which can jump to this block, we want to seal
         // it. This improves the quality of code generation.
         self.builder.seal_block(block0);
+        for (i, param) in function.params.iter().enumerate() {
+            let val = self.builder.block_params(block0)[i];
+            let ty = type_from_ast(&param.ty.kind, &self.module)?.unwrap();
+            let var = self
+                .variables
+                .entry(param.name.inner.to_string())
+                .or_insert_with(|| self.builder.declare_var(ty));
+            self.builder.def_var(*var, val);
+        }
 
         for statement in &function.body.statements {
             self.lower_statement(statement)?;
@@ -309,7 +338,10 @@ impl<'a> FunctionCompiler<'a> {
                 Ok(Some(v))
             }
             ast::Expr::Ident { ident, .. } => {
-                let var = self.variables.get(ident.inner).unwrap();
+                let var = self
+                    .variables
+                    .get(ident.inner)
+                    .expect(&format!("Could not find variable '{}'", ident.inner));
                 let v = self.builder.use_var(*var);
                 Ok(Some(v))
             }
@@ -481,7 +513,16 @@ pub fn build_executable(
 
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
-    let _ = cc.status().unwrap();
+    println!("LINKING");
+    match cc.output() {
+        Ok(res) => {
+            println!("Linking successful. {res:?}");
+        }
+        Err(e) => {
+            println!("ERROR {e:?}");
+            panic!()
+        }
+    }
 
     Ok(())
 }

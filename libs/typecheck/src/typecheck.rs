@@ -62,10 +62,12 @@ impl<'source> Typechecker<'source> {
     ) -> Result<typecheck_ast::Function<'source>, Diagnostic> {
         let mut params = Vec::with_capacity(function.params.len());
         for param in &function.params {
+            let ty = self.visit_type(&param.ty)?;
+            self.variables.insert(param.name.inner, ty.kind);
             params.push(typecheck_ast::Param {
                 span: param.span,
                 name: param.name.into(),
-                ty: self.visit_type(&param.ty)?,
+                ty,
                 default: None,
             });
         }
@@ -98,7 +100,7 @@ impl<'source> Typechecker<'source> {
             params,
             ret_ty,
             body,
-            public: function.public,
+            vis: function.vis.into(),
         })
     }
 
@@ -186,7 +188,11 @@ impl<'source> Typechecker<'source> {
             parser_ast::ExprKind::StringInterpolation(_) => todo!(),
             parser_ast::ExprKind::Ident(i) => {
                 let ident: typecheck_ast::Ident<'source> = (*i).into();
-                let ty = self.variables.get(&ident.inner).unwrap().clone();
+                let ty = self
+                    .variables
+                    .get(&ident.inner)
+                    .expect(&format!("Could not find variable '{}'", ident.inner))
+                    .clone();
                 Ok(typecheck_ast::Expr::Ident { ident, ty })
             }
             parser_ast::ExprKind::Binary { op, left, right } => {
