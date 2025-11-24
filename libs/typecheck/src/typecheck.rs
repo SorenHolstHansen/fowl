@@ -1,3 +1,5 @@
+use crate::ast::Vis;
+
 use super::ast as typecheck_ast;
 use error::Diagnostic;
 use parser::ast::{self as parser_ast};
@@ -78,7 +80,6 @@ struct Typechecker<'source> {
 
 impl<'source> Typechecker<'source> {
     fn typecheck(&mut self, module: &str) {
-        println!("Typechecking {}", module);
         let previous_module_name = self.current_module_name.clone();
         self.current_module_name = Some(module.to_string());
         let program = self.parsed_files.get(module).unwrap().clone();
@@ -383,6 +384,13 @@ impl<'source> Typechecker<'source> {
                                 typecheck_ast::Declaration::Function(function) => function,
                                 _ => todo!(),
                             };
+                            if let Vis::Private = func.vis {
+                                return Err(Diagnostic::error(
+                                    call.callee.span,
+                                    "Private function",
+                                )
+                                .with_error_label(func.span, "Function defined here"));
+                            }
                             return Ok(typecheck_ast::Expr::Call {
                                 ty: func.ret_ty,
                                 call: typecheck_ast::Call {

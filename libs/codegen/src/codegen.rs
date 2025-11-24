@@ -147,6 +147,8 @@ impl Compiler {
         // println!("fn main:\n{}", &self.ctx.func);
         self.module.define_function(func_id, &mut self.ctx).unwrap();
 
+        println!("{}:\n{}", function.name, self.ctx.func);
+
         self.ctx.clear();
         Ok(())
     }
@@ -503,13 +505,10 @@ pub fn build_executable(
 
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
-    println!("LINKING");
     match cc.output() {
-        Ok(res) => {
-            println!("Linking successful. {res:?}");
-        }
+        Ok(_) => {}
         Err(e) => {
-            println!("ERROR {e:?}");
+            println!("LINKING ERROR {e:?}");
             panic!()
         }
     }

@@ -70,7 +70,7 @@ fn handle_run(settings: CompilerSettings) -> Result<()> {
         parse_fowl_jsonc(&fowl_jsonc_src)?
     };
     println!(
-        "{:>12} '{}@{}'",
+        "{}:\npackage: '{}'\nversion: {}",
         "Building".green(),
         fowl_jsonc.name(),
         fowl_jsonc.version()
@@ -82,12 +82,12 @@ fn handle_run(settings: CompilerSettings) -> Result<()> {
     let output = compile_pipeline(&path, &root, &fowl_jsonc, &source, settings)?;
 
     println!(
-        "{:>12} in {:.2}s",
+        "\n{}:\nin: {:.2}s",
         "Finished".green(),
         (now.elapsed().as_millis() as f64) / 1000.0
     );
 
-    println!("{:>12} {:?}", "Running".green(), output);
+    println!("\n{}:\npath: {:?}", "Running".green(), output);
     execute_binary(&output);
 
     Ok(())
