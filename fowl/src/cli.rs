@@ -113,29 +113,33 @@ fn compile_pipeline(
     }
 
     let mut has_errors = false;
-    let mut parsed_files = files.iter().map(|(path, src)| {
-        let lexer = tokenize(src);
-        if settings.dump_tokens {
-            println!("\n== {:?} Tokens ==", path);
-            println!("{}", lexer.clone().pretty_string());
-        }
+    let parsed_files = files
+        .iter()
+        .map(|(path, src)| {
+            let lexer = tokenize(src);
+            if settings.dump_tokens {
+                println!("\n== {:?} Tokens ==", path);
+                println!("{}", lexer.clone().pretty_string());
+            }
 
-        let (program, parser_errors) = parse(lexer);
-        has_errors = !parser_errors.is_empty();
-        emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), source);
-        if settings.dump_ast {
-            println!("\n== AST ==");
-            println!("{:#?}", program);
-        }
+            let (program, parser_errors) = parse(lexer);
+            has_errors = !parser_errors.is_empty();
+            emit_diagnostics(parser_errors.into_iter().map(|e| e.with_file(path)), src);
+            if settings.dump_ast {
+                println!("\n== AST ==");
+                println!("{:#?}", program);
+            }
 
-        (path, program)
-    });
+            (path, program)
+        })
+        .collect::<Vec<_>>();
 
     // Module step
     // resolve_modules(&program)?;
 
     // Type checker step
-    let (program, typecheck_errors) = typecheck::typecheck(parsed_files.next().unwrap().1);
+    let first = parsed_files.first().unwrap();
+    let (program, typecheck_errors) = typecheck::typecheck(first.1.clone());
     if !typecheck_errors.is_empty() {
         has_errors = true;
     }

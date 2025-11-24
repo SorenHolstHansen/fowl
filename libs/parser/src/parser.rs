@@ -74,7 +74,7 @@ impl<'source> Parser<'source> {
         match self.next_token() {
             Some(t) if token == t.kind => Ok(t),
             Some(t) => {
-                panic!("HHH");
+                // panic!("HHH");
                 Err(Diagnostic::error(
                     t.span,
                     format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
@@ -160,13 +160,21 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_maybe_pub(&mut self) -> bool {
+    fn parse_maybe_vis(&mut self) -> bool {
         match self.peek_token() {
             Some(Token {
                 kind: TokenKind::Public,
                 ..
             }) => {
-                self.next_token();
+                self.lexer.next();
+                true
+            }
+            Some(Token {
+                kind: TokenKind::Internal,
+                ..
+            }) => {
+                // TODO: change this
+                self.lexer.next();
                 true
             }
             _ => false,
@@ -188,7 +196,7 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration<'source>, Diagnostic> {
-        let is_pub = self.parse_maybe_pub();
+        let is_pub = self.parse_maybe_vis();
 
         let t = self.peek_token().expect("Unexpected EOF");
         let kind = t.kind;
@@ -237,7 +245,7 @@ impl<'source> Parser<'source> {
                     let ty = self.parse_type()?;
                     fields.push((param_name, ty));
 
-                    self.expect_token(TokenKind::Comma)?;
+                    self.expect_token(TokenKind::Semicolon)?;
                     if let Some(Token {
                         kind: TokenKind::RBrace,
                         span,
@@ -245,6 +253,13 @@ impl<'source> Parser<'source> {
                     {
                         struct_span = struct_span.merge(*span);
                         self.next_token();
+                        if let Some(Token {
+                            kind: TokenKind::Semicolon,
+                            ..
+                        }) = self.peek_token()
+                        {
+                            self.lexer.next();
+                        }
                         break;
                     }
                 }
@@ -293,7 +308,7 @@ impl<'source> Parser<'source> {
                         e.with_help("Expected enum variant name")
                             .with_note("try giving the variant a name: `MyVariant ...`")
                     })?;
-                    self.expect_token(TokenKind::Comma)?;
+                    self.expect_token(TokenKind::Semicolon)?;
 
                     variants.push(EnumVariant {
                         span: variant_name.span,
@@ -307,6 +322,15 @@ impl<'source> Parser<'source> {
                     }) = self.peek_token()
                     {
                         enum_span = enum_span.merge(*span);
+                        // Eat '}'
+                        self.next_token();
+                        if let Some(Token {
+                            kind: TokenKind::Semicolon,
+                            ..
+                        }) = self.peek_token()
+                        {
+                            self.lexer.next();
+                        }
                         self.next_token();
                         break;
                     }
