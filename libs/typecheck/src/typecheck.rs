@@ -17,8 +17,8 @@ pub fn typecheck<'source>(
             declarations: Vec::new(),
         },
         variables: HashMap::new(),
-        current_module_name: None,
-        context_name_mapping: HashMap::new(),
+        current_module_name: format!("{}.main", package_name),
+        context_name_mapping: ContextNameMapping(HashMap::new()),
     };
 
     typechecker.typecheck(&format!("{}.main", package_name));
@@ -26,9 +26,9 @@ pub fn typecheck<'source>(
     (typechecker.program, typechecker.errors)
 }
 
-struct TypecheckedDeclarations<'source> {
-    inner: HashMap<String, HashMap<String, typecheck_ast::Declaration<'source>>>,
-}
+struct TypecheckedDeclarations<'source>(
+    HashMap<String, HashMap<String, typecheck_ast::Declaration<'source>>>,
+);
 
 impl<'source> TypecheckedDeclarations<'source> {
     fn insert(
@@ -37,7 +37,7 @@ impl<'source> TypecheckedDeclarations<'source> {
         decl_name: &str,
         decl: &typecheck_ast::Declaration<'source>,
     ) {
-        self.inner
+        self.0
             .entry(module_name.to_string())
             .and_modify(|m| {
                 m.insert(decl_name.to_string(), decl.clone());
@@ -54,32 +54,52 @@ impl<'source> TypecheckedDeclarations<'source> {
         module_name: &str,
         decl_name: &str,
     ) -> Option<&typecheck_ast::Declaration<'source>> {
-        self.inner.get(module_name).and_then(|i| i.get(decl_name))
+        self.0.get(module_name).and_then(|i| i.get(decl_name))
     }
 }
 
 impl<'source> TypecheckedDeclarations<'source> {
     fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
+        Self(HashMap::new())
+    }
+}
+
+struct ContextNameMapping(HashMap<String, HashMap<String, String>>);
+
+impl ContextNameMapping {
+    fn insert(&mut self, in_module_name: String, alias: String, reference: String) {
+        self.0
+            .entry(in_module_name.to_string())
+            .and_modify(|m| {
+                m.insert(alias.to_string(), reference.clone());
+            })
+            .or_insert_with(|| {
+                let mut hm = HashMap::new();
+                hm.insert(alias.to_string(), reference.clone());
+                hm
+            });
+    }
+
+    fn get(&self, in_module_name: &str, alias: &str) -> Option<&String> {
+        self.0.get(in_module_name).and_then(|i| i.get(alias))
     }
 }
 
 struct Typechecker<'source> {
     parsed_files: HashMap<String, parser_ast::Program<'source>>,
     typechecked_declarations: TypecheckedDeclarations<'source>,
+    // Complete program after typechecking
     program: typecheck_ast::Program<'source>,
     errors: Vec<Diagnostic<'source>>,
     variables: HashMap<&'source str, typecheck_ast::TypeKind<'source>>,
-    current_module_name: Option<String>,
-    context_name_mapping: HashMap<String, String>,
+    current_module_name: String,
+    context_name_mapping: ContextNameMapping,
 }
 
 impl<'source> Typechecker<'source> {
     fn typecheck(&mut self, module: &str) {
         let previous_module_name = self.current_module_name.clone();
-        self.current_module_name = Some(module.to_string());
+        self.current_module_name = module.to_string();
         let program = self.parsed_files.get(module).unwrap().clone();
         self.typecheck_inner(&program);
         self.current_module_name = previous_module_name;
@@ -112,7 +132,7 @@ impl<'source> Typechecker<'source> {
                 let f = self.visit_function(function)?;
                 let function_decl = typecheck_ast::Declaration::Function(f);
                 self.typechecked_declarations.insert(
-                    self.current_module_name.as_ref().unwrap(),
+                    &self.current_module_name,
                     function.name.inner,
                     &function_decl,
                 );
@@ -142,8 +162,11 @@ impl<'source> Typechecker<'source> {
                             .unwrap()
                     }
                 };
-                self.context_name_mapping
-                    .insert(last.to_string(), import.join("."));
+                self.context_name_mapping.insert(
+                    self.current_module_name.clone(),
+                    last.to_string(),
+                    import.join("."),
+                );
                 Ok(None)
             }
         }
@@ -153,6 +176,9 @@ impl<'source> Typechecker<'source> {
         &mut self,
         function: &parser_ast::Function<'source>,
     ) -> Result<typecheck_ast::Function<'source>, Diagnostic<'source>> {
+        // Clear up any variables from previous functions
+        // TODO: if this is a function in a fuction, the variables should be wiped
+        self.variables = HashMap::new();
         let mut params = Vec::with_capacity(function.params.len());
         for param in &function.params {
             let ty = self.visit_type(&param.ty)?;
@@ -165,46 +191,57 @@ impl<'source> Typechecker<'source> {
             });
         }
 
-        let body = self.visit_block(&function.body)?;
-
-        let ret_ty = body.ty;
-        let defined_ret_ty = self.visit_type(&function.ret_ty)?;
-        if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
-            let span = function.body.statements.last().unwrap().span();
-            return Err(Diagnostic::error(
-                function.ret_ty.span,
-                "Mismatched return type of function",
-            )
-            .with_info_label(
-                function.ret_ty.span,
-                format!("Return type defined as {}", function.ret_ty.kind),
-            )
-            .with_error_label(
-                *span,
-                format!(
-                    "Mismatched types. Expected '{}' found '{}'",
-                    function.ret_ty.kind, ret_ty
-                ),
-            ));
-        }
-
-        let name = if function.name.inner == "main" {
-            "main".to_string()
+        if self.current_module_name.starts_with("std.") && function.name.inner == "print" {
+            Ok(typecheck_ast::Function {
+                span: function.span,
+                name: format!("{}.{}", self.current_module_name, function.name.inner),
+                params,
+                ret_ty: typecheck_ast::TypeKind::Void,
+                body: typecheck_ast::Block {
+                    span: function.body.span,
+                    statements: Vec::new(),
+                    ty: typecheck_ast::TypeKind::Void,
+                },
+                vis: Vis::Public,
+            })
         } else {
-            format!(
-                "{}.{}",
-                self.current_module_name.as_ref().unwrap(),
-                function.name.inner
-            )
-        };
-        Ok(typecheck_ast::Function {
-            span: function.span,
-            name,
-            params,
-            ret_ty,
-            body,
-            vis: function.vis.into(),
-        })
+            let body = self.visit_block(&function.body)?;
+
+            let ret_ty = body.ty;
+            let defined_ret_ty = self.visit_type(&function.ret_ty)?;
+            if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
+                let span = function.body.statements.last().unwrap().span();
+                return Err(Diagnostic::error(
+                    function.ret_ty.span,
+                    "Mismatched return type of function",
+                )
+                .with_info_label(
+                    function.ret_ty.span,
+                    format!("Return type defined as {}", function.ret_ty.kind),
+                )
+                .with_error_label(
+                    *span,
+                    format!(
+                        "Mismatched types. Expected '{}' found '{}'",
+                        function.ret_ty.kind, ret_ty
+                    ),
+                ));
+            }
+
+            let name = if function.name.inner == "main" {
+                "main".to_string()
+            } else {
+                format!("{}.{}", self.current_module_name, function.name.inner)
+            };
+            Ok(typecheck_ast::Function {
+                span: function.span,
+                name,
+                params,
+                ret_ty,
+                body,
+                vis: function.vis.into(),
+            })
+        }
     }
 
     fn visit_block(
@@ -275,7 +312,10 @@ impl<'source> Typechecker<'source> {
             parser_ast::Statement::Function(_) => todo!(),
             parser_ast::Statement::Struct(_) => todo!(),
             parser_ast::Statement::Enum(_) => todo!(),
-            parser_ast::Statement::Expr(_) => todo!(),
+            parser_ast::Statement::Expr(expr) => {
+                let expr = self.visit_expr(expr)?;
+                Ok(typecheck_ast::Statement::Expr(expr))
+            }
         }
     }
 
@@ -287,8 +327,16 @@ impl<'source> Typechecker<'source> {
             parser_ast::ExprKind::IntLiteral(i) => Ok(typecheck_ast::Expr::IntLiteral(*i)),
             parser_ast::ExprKind::FloatLiteral(f) => Ok(typecheck_ast::Expr::FloatLiteral(*f)),
             parser_ast::ExprKind::BoolLiteral(_) => todo!(),
-            parser_ast::ExprKind::StringLiteral(_) => todo!(),
-            parser_ast::ExprKind::StringInterpolation(_) => todo!(),
+            parser_ast::ExprKind::StringLiteral(str) => {
+                Ok(typecheck_ast::Expr::StringLiteral(*str))
+            }
+            parser_ast::ExprKind::StringInterpolation(si) => {
+                let exprs = si
+                    .iter()
+                    .map(|e| self.visit_expr(e))
+                    .collect::<Result<Vec<_>, Diagnostic<'_>>>();
+                Ok(typecheck_ast::Expr::StringInterpolation(exprs?))
+            }
             parser_ast::ExprKind::Ident(i) => {
                 let ident: typecheck_ast::Ident<'source> = (*i).into();
                 let ty = *self
@@ -370,47 +418,59 @@ impl<'source> Typechecker<'source> {
                 })
             }
             parser_ast::ExprKind::Unary { .. } => todo!(),
-            parser_ast::ExprKind::Call(call) => {
-                match &call.callee.kind {
-                    parser_ast::ExprKind::Ident(ident) => {
-                        if let Some(mapped) = self.context_name_mapping.get(ident.inner) {
-                            let split = mapped.split(".").collect::<Vec<_>>();
-                            let last = split.last().unwrap();
-                            let module = &split[..(split.len() - 1)].join(".");
-                            let decl = self.typechecked_declarations.get(module, last).unwrap();
-                            let func = match decl {
-                                typecheck_ast::Declaration::Function(function) => function,
-                                _ => todo!(),
-                            };
-                            if let Vis::Private = func.vis {
-                                return Err(Diagnostic::error(
-                                    call.callee.span,
-                                    "Private function",
-                                )
-                                .with_error_label(call.callee.span, "This function is private")
-                                .with_info_label(func.span, "Function defined here")
-                                .with_help("make the function `internal` or `public` to use it"));
-                            }
-                            return Ok(typecheck_ast::Expr::Call {
-                                ty: func.ret_ty,
-                                call: typecheck_ast::Call {
-                                    callee: mapped.to_string(),
-                                    args: call
-                                        .args
-                                        .iter()
-                                        .map(|arg| match self.visit_expr(arg) {
-                                            Ok(arg) => arg,
-                                            Err(e) => todo!(),
-                                        })
-                                        .collect(),
-                                },
-                            });
-                        }
-                        todo!()
+            parser_ast::ExprKind::Call(call) => match &call.callee.kind {
+                parser_ast::ExprKind::Ident(ident) => {
+                    let (decl, mapped) = if let Some(mapped) = self
+                        .context_name_mapping
+                        .get(&self.current_module_name, ident.inner)
+                    {
+                        let split = mapped.split(".").collect::<Vec<_>>();
+                        let last = split.last().unwrap();
+                        let module = &split[..(split.len() - 1)].join(".");
+                        let decl = self.typechecked_declarations.get(module, last).unwrap();
+                        (decl, mapped.to_string())
+                    } else if let Some(decl) = self
+                        .typechecked_declarations
+                        .get(&self.current_module_name, ident.inner)
+                    {
+                        (
+                            decl,
+                            format!("{}.{}", self.current_module_name, ident.inner),
+                        )
+                    } else {
+                        return Err(Diagnostic::error(
+                            call.callee.span,
+                            format!("Couldn't find '{}'", ident.inner),
+                        ));
+                    };
+                    let func = match decl {
+                        typecheck_ast::Declaration::Function(function) => function,
+                        _ => todo!(),
+                    };
+                    if let Vis::Private = func.vis {
+                        return Err(Diagnostic::error(call.callee.span, "Private function")
+                            .with_error_label(call.callee.span, "This function is private")
+                            .with_info_label(func.span, "Function defined here")
+                            .with_help("make the function `internal` or `public` to use it"));
                     }
-                    _ => todo!(),
-                };
-            }
+                    // TODO: verify call matches the signature of the function
+                    Ok(typecheck_ast::Expr::Call {
+                        ty: func.ret_ty,
+                        call: typecheck_ast::Call {
+                            callee: mapped.to_string(),
+                            args: call
+                                .args
+                                .iter()
+                                .map(|arg| match self.visit_expr(arg) {
+                                    Ok(arg) => arg,
+                                    Err(e) => todo!(),
+                                })
+                                .collect(),
+                        },
+                    })
+                }
+                _ => todo!(),
+            },
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),
         }

@@ -240,16 +240,15 @@ impl<'a> FunctionCompiler<'a> {
             })
             .collect();
 
-        let ret_ty = AbiParam::new(
-            type_from_ast(&function.ret_ty, self.module)
-                .unwrap()
-                .unwrap(),
-        );
+        let mut returns = Vec::new();
+        if let Some(t) = type_from_ast(&function.ret_ty, self.module).unwrap() {
+            returns.push(AbiParam::new(t))
+        }
 
         self.builder.func.signature = Signature {
             call_conv,
             params,
-            returns: vec![ret_ty],
+            returns,
         };
 
         // Create the functions entry block.
@@ -270,12 +269,31 @@ impl<'a> FunctionCompiler<'a> {
             self.builder.def_var(*var, val);
         }
 
-        for statement in &function.body.statements {
-            self.lower_statement(statement)?;
+        if function.name == "std.io.print" {
+            println!("IN HERE");
+            let print_func_id = match self.module.declarations().get_name("rt_print_str").unwrap() {
+                cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+                cranelift_module::FuncOrDataId::Data(_) => todo!(),
+            };
+            let local_callee = self
+                .module
+                .declare_func_in_func(print_func_id, self.builder.func);
+            let var = self
+                .variables
+                .get("message")
+                .expect("Could not find variable 'message'");
+            let v = self.builder.use_var(*var);
+            let call = self.builder.ins().call(local_callee, &[v]);
+            self.builder.inst_results(call);
+            self.builder.ins().return_(&[]);
+        } else {
+            for statement in &function.body.statements {
+                self.lower_statement(statement)?;
+            }
         }
 
         if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
-            panic!("verifier error: {err}");
+            panic!("verifier error: {} {err}", function.name);
         }
 
         Ok(())

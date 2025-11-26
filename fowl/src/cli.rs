@@ -70,7 +70,7 @@ fn handle_run(settings: CompilerSettings) -> Result<()> {
         parse_fowl_jsonc(&fowl_jsonc_src)?
     };
     println!(
-        "{}:\npackage: '{}'\nversion: {}",
+        "{}:\npackage: {}\nversion: {}",
         "Building".green(),
         fowl_jsonc.name(),
         fowl_jsonc.version()
@@ -108,32 +108,63 @@ fn compile_pipeline(
         let src = std::fs::read_to_string(path)?;
         files.push((path.to_path_buf(), src));
     }
+    // Find the std lib
+    let std_lib_path = "../../std/src";
+    let mut std_lib_files = Vec::new();
+    for entry in WalkDir::new(std_lib_path) {
+        let entry = entry?;
+        let path = entry.path();
+        match path.extension() {
+            Some(ext) if ext == "fo" => {}
+            _ => continue,
+        }
+        let src = std::fs::read_to_string(path)?;
+        std_lib_files.push((path.to_path_buf(), src));
+    }
 
     let mut has_errors = false;
-    let parsed_files = files
-        .iter()
-        .map(|(path, src)| {
-            let lexer = tokenize(src, path);
-            if settings.dump_tokens {
-                println!("\n== {:?} Tokens ==", path);
-                println!("{}", lexer.clone().pretty_string());
-            }
+    let mut parsed_files: HashMap<String, parser::ast::Program<'_>> = HashMap::new();
+    for (path, src) in &files {
+        let lexer = tokenize(src, path);
+        if settings.dump_tokens {
+            println!("\n== {:?} Tokens ==", path);
+            println!("{}", lexer.clone().pretty_string());
+        }
 
-            let (program, parser_errors) = parse(lexer);
-            has_errors = !parser_errors.is_empty();
-            emit_diagnostics(parser_errors);
-            if settings.dump_ast {
-                println!("\n== AST ==");
-                println!("{:#?}", program);
-            }
+        let (program, parser_errors) = parse(lexer);
+        has_errors = !parser_errors.is_empty();
+        emit_diagnostics(parser_errors);
+        if settings.dump_ast {
+            println!("\n== AST ==");
+            println!("{:#?}", program);
+        }
 
-            let module_name = path_to_module_name(path, root, fowl_jsonc.name());
-            (module_name, program)
-        })
-        .collect::<HashMap<_, _>>();
-
-    // Module step
-    // resolve_modules(&program)?;
+        let module_name = path_to_module_name(path, root, fowl_jsonc.name());
+        parsed_files.insert(module_name, program);
+    }
+    for (path, src) in &std_lib_files {
+        let lexer = tokenize(src, path);
+        if settings.dump_tokens {
+            println!("\n== {:?} Tokens ==", path);
+            println!("{}", lexer.clone().pretty_string());
+        }
+        let (program, parser_errors) = parse(lexer);
+        has_errors = !parser_errors.is_empty();
+        emit_diagnostics(parser_errors);
+        if settings.dump_ast {
+            println!("\n== AST ==");
+            println!("{:#?}", program);
+        }
+        let p = path
+            .strip_prefix(std_lib_path)
+            .unwrap()
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let module_name = format!("std.{}", p.split("/").collect::<Vec<_>>().join("."));
+        parsed_files.insert(module_name, program);
+    }
 
     // Type checker step
     let (program, typecheck_errors) = typecheck::typecheck(parsed_files, fowl_jsonc.name());

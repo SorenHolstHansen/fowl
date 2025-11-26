@@ -1,5 +1,5 @@
 public fn print(message: string) void {
-	rt_print_str(message);
+	// filled in by the compiler
 }
 
 public fn println(message: string) void {
