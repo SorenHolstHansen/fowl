@@ -149,10 +149,11 @@ impl<'src> Lexer<'src> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{path::PathBuf, str::FromStr};
 
     #[test]
     fn test_lex2() {
-        let path = PathBuf::new("../../../examples/kitchen_sink.fo");
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo");
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
         let lexer = Lexer::new(source, path);

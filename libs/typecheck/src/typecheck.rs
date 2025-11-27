@@ -5,10 +5,10 @@ use parser::ast::{self as parser_ast};
 use std::collections::HashMap;
 use utils::a_or_an;
 
-pub fn typecheck<'source>(
-    files: HashMap<String, parser_ast::Program<'source>>,
+pub fn typecheck<'src>(
+    files: HashMap<String, parser_ast::Program<'src>>,
     package_name: &str,
-) -> (typecheck_ast::Program<'source>, Vec<Diagnostic<'source>>) {
+) -> (typecheck_ast::Program<'src>, Vec<Diagnostic<'src>>) {
     let mut typechecker = Typechecker {
         parsed_files: files.clone(),
         typechecked_declarations: TypecheckedDeclarations::new(),
@@ -26,16 +26,16 @@ pub fn typecheck<'source>(
     (typechecker.program, typechecker.errors)
 }
 
-struct TypecheckedDeclarations<'source>(
-    HashMap<String, HashMap<String, typecheck_ast::Declaration<'source>>>,
+struct TypecheckedDeclarations<'src>(
+    HashMap<String, HashMap<String, typecheck_ast::Declaration<'src>>>,
 );
 
-impl<'source> TypecheckedDeclarations<'source> {
+impl<'src> TypecheckedDeclarations<'src> {
     fn insert(
         &mut self,
         module_name: &str,
         decl_name: &str,
-        decl: &typecheck_ast::Declaration<'source>,
+        decl: &typecheck_ast::Declaration<'src>,
     ) {
         self.0
             .entry(module_name.to_string())
@@ -53,12 +53,12 @@ impl<'source> TypecheckedDeclarations<'source> {
         &self,
         module_name: &str,
         decl_name: &str,
-    ) -> Option<&typecheck_ast::Declaration<'source>> {
+    ) -> Option<&typecheck_ast::Declaration<'src>> {
         self.0.get(module_name).and_then(|i| i.get(decl_name))
     }
 }
 
-impl<'source> TypecheckedDeclarations<'source> {
+impl<'src> TypecheckedDeclarations<'src> {
     fn new() -> Self {
         Self(HashMap::new())
     }
@@ -85,18 +85,18 @@ impl ContextNameMapping {
     }
 }
 
-struct Typechecker<'source> {
-    parsed_files: HashMap<String, parser_ast::Program<'source>>,
-    typechecked_declarations: TypecheckedDeclarations<'source>,
+struct Typechecker<'src> {
+    parsed_files: HashMap<String, parser_ast::Program<'src>>,
+    typechecked_declarations: TypecheckedDeclarations<'src>,
     // Complete program after typechecking
-    program: typecheck_ast::Program<'source>,
-    errors: Vec<Diagnostic<'source>>,
-    variables: HashMap<&'source str, typecheck_ast::TypeKind<'source>>,
+    program: typecheck_ast::Program<'src>,
+    errors: Vec<Diagnostic<'src>>,
+    variables: HashMap<&'src str, typecheck_ast::TypeKind<'src>>,
     current_module_name: String,
     context_name_mapping: ContextNameMapping,
 }
 
-impl<'source> Typechecker<'source> {
+impl<'src> Typechecker<'src> {
     fn typecheck(&mut self, module: &str) {
         let previous_module_name = self.current_module_name.clone();
         self.current_module_name = module.to_string();
@@ -105,7 +105,7 @@ impl<'source> Typechecker<'source> {
         self.current_module_name = previous_module_name;
     }
 
-    fn typecheck_inner(&mut self, program: &parser_ast::Program<'source>) {
+    fn typecheck_inner(&mut self, program: &parser_ast::Program<'src>) {
         for declaration in &program.declarations {
             let decl = match self.visit_declaration(declaration) {
                 Ok(Some(decl)) => decl,
@@ -121,8 +121,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_declaration(
         &mut self,
-        declaration: &parser_ast::Declaration<'source>,
-    ) -> Result<Option<typecheck_ast::Declaration<'source>>, Diagnostic<'source>> {
+        declaration: &parser_ast::Declaration<'src>,
+    ) -> Result<Option<typecheck_ast::Declaration<'src>>, Diagnostic<'src>> {
         match declaration {
             parser_ast::Declaration::Struct(_) => todo!(),
             parser_ast::Declaration::Enum(_) => todo!(),
@@ -174,8 +174,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_function(
         &mut self,
-        function: &parser_ast::Function<'source>,
-    ) -> Result<typecheck_ast::Function<'source>, Diagnostic<'source>> {
+        function: &parser_ast::Function<'src>,
+    ) -> Result<typecheck_ast::Function<'src>, Diagnostic<'src>> {
         // Clear up any variables from previous functions
         // TODO: if this is a function in a fuction, the variables should be wiped
         self.variables = HashMap::new();
@@ -246,8 +246,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_block(
         &mut self,
-        block: &parser_ast::Block<'source>,
-    ) -> Result<typecheck_ast::Block<'source>, Diagnostic<'source>> {
+        block: &parser_ast::Block<'src>,
+    ) -> Result<typecheck_ast::Block<'src>, Diagnostic<'src>> {
         let mut statements = Vec::with_capacity(block.statements.len());
 
         for statement in &block.statements {
@@ -271,8 +271,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_statement(
         &mut self,
-        statement: &parser_ast::Statement<'source>,
-    ) -> Result<typecheck_ast::Statement<'source>, Diagnostic<'source>> {
+        statement: &parser_ast::Statement<'src>,
+    ) -> Result<typecheck_ast::Statement<'src>, Diagnostic<'src>> {
         match statement {
             parser_ast::Statement::Let {
                 name,
@@ -283,7 +283,7 @@ impl<'source> Typechecker<'source> {
             } => {
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that ty and expr.ty match
-                let name: typecheck_ast::Ident<'source> = (*name).into();
+                let name: typecheck_ast::Ident<'src> = (*name).into();
                 let ty = *expr.ty();
                 self.variables.insert(name.inner, ty);
                 Ok(typecheck_ast::Statement::Let {
@@ -321,8 +321,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_expr(
         &mut self,
-        expr: &parser_ast::Expr<'source>,
-    ) -> Result<typecheck_ast::Expr<'source>, Diagnostic<'source>> {
+        expr: &parser_ast::Expr<'src>,
+    ) -> Result<typecheck_ast::Expr<'src>, Diagnostic<'src>> {
         match &expr.kind {
             parser_ast::ExprKind::IntLiteral(i) => Ok(typecheck_ast::Expr::IntLiteral(*i)),
             parser_ast::ExprKind::FloatLiteral(f) => Ok(typecheck_ast::Expr::FloatLiteral(*f)),
@@ -338,7 +338,7 @@ impl<'source> Typechecker<'source> {
                 Ok(typecheck_ast::Expr::StringInterpolation(exprs?))
             }
             parser_ast::ExprKind::Ident(i) => {
-                let ident: typecheck_ast::Ident<'source> = (*i).into();
+                let ident: typecheck_ast::Ident<'src> = (*i).into();
                 let ty = *self
                     .variables
                     .get(&ident.inner)
@@ -478,8 +478,8 @@ impl<'source> Typechecker<'source> {
 
     fn validate_types_align(
         &mut self,
-        ty1: &typecheck_ast::TypeKind<'source>,
-        ty2: &typecheck_ast::TypeKind<'source>,
+        ty1: &typecheck_ast::TypeKind<'src>,
+        ty2: &typecheck_ast::TypeKind<'src>,
     ) -> bool {
         match (ty1, ty2) {
             (typecheck_ast::TypeKind::Int, typecheck_ast::TypeKind::Int)
@@ -498,8 +498,8 @@ impl<'source> Typechecker<'source> {
 
     fn visit_type(
         &mut self,
-        ty: &parser_ast::Type<'source>,
-    ) -> Result<typecheck_ast::Type<'source>, Diagnostic<'source>> {
+        ty: &parser_ast::Type<'src>,
+    ) -> Result<typecheck_ast::Type<'src>, Diagnostic<'src>> {
         let kind = match &ty.kind {
             parser_ast::TypeKind::Ident(ident) => typecheck_ast::TypeKind::Ident((*ident).into()),
             parser_ast::TypeKind::Int => typecheck_ast::TypeKind::Int,

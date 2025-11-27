@@ -142,7 +142,7 @@ impl<'src> Diagnostic<'src> {
     }
 }
 
-pub fn emit_diagnostics<'source>(diagnostics: impl IntoIterator<Item = Diagnostic<'source>>) {
+pub fn emit_diagnostics<'src>(diagnostics: impl IntoIterator<Item = Diagnostic<'src>>) {
     for diagnostic in diagnostics {
         let range: std::ops::Range<usize> = diagnostic.span.into();
         let file = diagnostic.span.file().display().to_string();
