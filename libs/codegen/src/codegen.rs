@@ -144,7 +144,6 @@ impl Compiler {
         function_compiler.compile(function)?;
         function_compiler.finalize();
 
-        // println!("fn main:\n{}", &self.ctx.func);
         self.module.define_function(func_id, &mut self.ctx).unwrap();
 
         println!("{}:\n{}", function.name, self.ctx.func);
@@ -270,7 +269,6 @@ impl<'a> FunctionCompiler<'a> {
         }
 
         if function.name == "std.io.print" {
-            println!("IN HERE");
             let print_func_id = match self.module.declarations().get_name("rt_print_str").unwrap() {
                 cranelift_module::FuncOrDataId::Func(func_id) => func_id,
                 cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -289,6 +287,11 @@ impl<'a> FunctionCompiler<'a> {
         } else {
             for statement in &function.body.statements {
                 self.lower_statement(statement)?;
+            }
+
+            // If this is a void function and it doesn't end with a return, add one
+            if self.builder.func.signature.returns.is_empty() {
+                self.builder.ins().return_(&[]);
             }
         }
 

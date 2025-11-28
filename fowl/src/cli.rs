@@ -7,6 +7,7 @@ use lexer::tokenize;
 use parser::parser::parse;
 use std::{
     collections::HashMap,
+    io::Write,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -205,7 +206,10 @@ fn path_to_module_name(path: &Path, root: &Path, package_name: &str) -> String {
 fn execute_binary(path: &Path) {
     let mut command = std::process::Command::new(path);
 
+    println!("\n");
     let output = command.output().unwrap();
+    std::io::stdout().write_all(&output.stdout).unwrap();
+    std::io::stderr().write_all(&output.stderr).unwrap();
     std::process::exit(output.status.code().unwrap_or(0));
 }
 
