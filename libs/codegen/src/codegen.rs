@@ -429,13 +429,17 @@ impl<'a> FunctionCompiler<'a> {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
-                ast::Expr::Ident { .. } => {
-                    // TODO: Check the type of ident
-                    v = self.format_int_fn(v)?;
+                ast::Expr::Ident { ty, .. } => {
+                    // Check the type and only format if it's an integer
+                    if matches!(ty, ast::TypeKind::Int) {
+                        v = self.format_int_fn(v)?;
+                    }
                 }
-                ast::Expr::Binary { .. } => {
-                    // TODO: Check the type of ident
-                    v = self.format_int_fn(v)?;
+                ast::Expr::Binary { ty, .. } => {
+                    // Check the type and only format if it's an integer
+                    if matches!(ty, ast::TypeKind::Int) {
+                        v = self.format_int_fn(v)?;
+                    }
                 }
                 _ => {}
             }
