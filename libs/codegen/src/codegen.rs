@@ -334,11 +334,17 @@ impl<'a> FunctionCompiler<'a> {
             ast::Expr::FloatLiteral(_) => todo!(),
             ast::Expr::BoolLiteral(_) => todo!(),
             ast::Expr::StringLiteral(s) => {
-                let s = s.unwrap_or_default();
+                let mut data_bytes = match s {
+                    Some("\\n") => "\n".as_bytes().to_vec(),
+                    Some("\\t") => "\t".as_bytes().to_vec(),
+                    Some(s) => s.as_bytes().to_vec(),
+                    None => "".as_bytes().to_vec(),
+                };
+                data_bytes.push(0);
                 // Setup global string
                 let id = self.module.declare_anonymous_data(false, false).unwrap();
                 let mut data_description = DataDescription::new();
-                data_description.define(format!("{s}\00").as_bytes().to_vec().into_boxed_slice());
+                data_description.define(data_bytes.into_boxed_slice());
                 self.module.define_data(id, &data_description).unwrap();
 
                 let local_id = self.module.declare_data_in_func(id, self.builder.func);

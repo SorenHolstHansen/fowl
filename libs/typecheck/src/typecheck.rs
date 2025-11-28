@@ -49,11 +49,7 @@ impl<'src> TypecheckedDeclarations<'src> {
             });
     }
 
-    fn get(
-        &self,
-        module_name: &str,
-        decl_name: &str,
-    ) -> Option<&typecheck_ast::Declaration<'src>> {
+    fn get(&self, module_name: &str, decl_name: &str) -> Option<&typecheck_ast::Declaration<'src>> {
         self.0.get(module_name).and_then(|i| i.get(decl_name))
     }
 }
