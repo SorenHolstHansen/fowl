@@ -1,5 +1,5 @@
 fn main() {
-    if std::env::var("SKIP_LEXER_BUILD_SCRIPT").unwrap() == "true" {
+    if std::env::var("SKIP_LEXER_BUILD_SCRIPT") == Ok("true".to_string()) {
         return;
     }
     // Tell Cargo that if the given file changes, to rerun this build script.

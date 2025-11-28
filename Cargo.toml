@@ -9,8 +9,8 @@ resolver = "3"
 anyhow = "1"
 codegen = { path = "libs/codegen" }
 error = { path = "libs/error" }
+fowl_jsonc = { path = "libs/fowl_jsonc" }
 lexer = { path = "libs/lexer" }
-module = { path = "libs/module" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }
 typecheck = { path = "libs/typecheck" }

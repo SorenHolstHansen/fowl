@@ -1,18 +1,18 @@
 use span::Span;
 
 #[derive(Debug, Clone)]
-pub struct Program<'source> {
-    pub declarations: Vec<Declaration<'source>>,
+pub struct Program<'src> {
+    pub declarations: Vec<Declaration<'src>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ident<'source> {
-    pub inner: &'source str,
-    pub span: Span,
+pub struct Ident<'src> {
+    pub inner: &'src str,
+    pub span: Span<'src>,
 }
 
-impl<'source> From<parser::ast::Ident<'source>> for Ident<'source> {
-    fn from(value: parser::ast::Ident<'source>) -> Self {
+impl<'src> From<parser::ast::Ident<'src>> for Ident<'src> {
+    fn from(value: parser::ast::Ident<'src>) -> Self {
         Ident {
             inner: value.inner,
             span: value.span,
@@ -71,53 +71,53 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub struct Call<'source> {
-    pub callee: Box<Expr<'source>>,
-    pub args: Vec<Expr<'source>>,
+pub struct Call<'src> {
+    pub callee: String,
+    pub args: Vec<Expr<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr<'source> {
+pub enum Expr<'src> {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
     /// None if empty string
-    StringLiteral(Option<&'source str>),
-    StringInterpolation(Vec<Expr<'source>>),
+    StringLiteral(Option<&'src str>),
+    StringInterpolation(Vec<Expr<'src>>),
     Ident {
-        ident: Ident<'source>,
-        ty: TypeKind<'source>,
+        ident: Ident<'src>,
+        ty: TypeKind<'src>,
     },
     Binary {
         op: BinaryOp,
-        left: Box<Expr<'source>>,
-        right: Box<Expr<'source>>,
-        ty: TypeKind<'source>,
+        left: Box<Expr<'src>>,
+        right: Box<Expr<'src>>,
+        ty: TypeKind<'src>,
     },
     // Unary operations
     Unary {
         op: UnaryOp,
-        expr: Box<Expr<'source>>,
-        ty: TypeKind<'source>,
+        expr: Box<Expr<'src>>,
+        ty: TypeKind<'src>,
     },
 
     Call {
-        call: Call<'source>,
-        ty: TypeKind<'source>,
+        call: Call<'src>,
+        ty: TypeKind<'src>,
     },
     StructInstance {
-        name: Ident<'source>,
-        fields: Vec<(Ident<'source>, Expr<'source>)>, // field name -> value
+        name: Ident<'src>,
+        fields: Vec<(Ident<'src>, Expr<'src>)>, // field name -> value
     },
     Member {
-        object: Box<Expr<'source>>,
-        field: Ident<'source>,
-        ty: TypeKind<'source>,
+        object: Box<Expr<'src>>,
+        field: Ident<'src>,
+        ty: TypeKind<'src>,
     },
 }
 
-impl<'source> Expr<'source> {
-    pub fn ty(&self) -> &TypeKind<'source> {
+impl<'src> Expr<'src> {
+    pub fn ty(&self) -> &TypeKind<'src> {
         match self {
             Expr::IntLiteral(_) => &TypeKind::Int,
             Expr::FloatLiteral(_) => &TypeKind::Float,
@@ -135,8 +135,8 @@ impl<'source> Expr<'source> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeKind<'source> {
-    Ident(Ident<'source>),
+pub enum TypeKind<'src> {
+    Ident(Ident<'src>),
     Int,
     Float,
     String,
@@ -158,24 +158,24 @@ impl std::fmt::Display for TypeKind<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type<'source> {
-    pub span: Span,
-    pub kind: TypeKind<'source>,
+pub struct Type<'src> {
+    pub span: Span<'src>,
+    pub kind: TypeKind<'src>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Param<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub ty: Type<'source>,
-    pub default: Option<Expr<'source>>,
+pub struct Param<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub ty: Type<'src>,
+    pub default: Option<Expr<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Block<'source> {
-    pub span: Span,
-    pub statements: Vec<Statement<'source>>,
-    pub ty: TypeKind<'source>,
+pub struct Block<'src> {
+    pub span: Span<'src>,
+    pub statements: Vec<Statement<'src>>,
+    pub ty: TypeKind<'src>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,16 +196,16 @@ impl From<parser::ast::Vis> for Vis {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub params: Vec<Param<'source>>,
-    pub ret_ty: TypeKind<'source>,
-    pub body: Block<'source>,
+pub struct Function<'src> {
+    pub span: Span<'src>,
+    pub name: String,
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: TypeKind<'src>,
+    pub body: Block<'src>,
     pub vis: Vis,
 }
 
-impl<'source> Function<'source> {
+impl<'src> Function<'src> {
     pub fn set_vis(mut self, vis: Vis) -> Self {
         self.vis = vis;
         self
@@ -213,51 +213,51 @@ impl<'source> Function<'source> {
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumVariant<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub fields: Vec<Type<'source>>,
+pub struct EnumVariant<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub fields: Vec<Type<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Struct<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub fields: Vec<(Ident<'source>, Type<'source>)>,
+pub struct Struct<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub fields: Vec<(Ident<'src>, Type<'src>)>,
     pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]
-pub struct Enum<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub variants: Vec<EnumVariant<'source>>,
+pub struct Enum<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub variants: Vec<EnumVariant<'src>>,
     pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement<'source> {
+pub enum Statement<'src> {
     Let {
-        name: Ident<'source>,
-        ty: TypeKind<'source>,
-        expr: Expr<'source>,
+        name: Ident<'src>,
+        ty: TypeKind<'src>,
+        expr: Expr<'src>,
         mutable: bool,
-        span: Span,
+        span: Span<'src>,
     },
     Return {
-        span: Span,
-        expr: Option<Expr<'source>>,
-        ty: TypeKind<'source>,
+        span: Span<'src>,
+        expr: Option<Expr<'src>>,
+        ty: TypeKind<'src>,
     },
-    Function(Function<'source>),
+    Function(Function<'src>),
     // Type definitions
-    Struct(Struct<'source>),
-    Enum(Enum<'source>),
-    Expr(Expr<'source>),
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Expr(Expr<'src>),
 }
 
-impl<'source> Statement<'source> {
-    pub fn span(&self) -> Span {
+impl<'src> Statement<'src> {
+    pub fn span(&'_ self) -> Span<'_> {
         match self {
             Statement::Let { span, .. } => *span,
             Statement::Return { span, .. } => *span,
@@ -270,15 +270,15 @@ impl<'source> Statement<'source> {
 }
 
 #[derive(Debug, Clone)]
-pub struct UseImport<'source> {
-    pub module: Ident<'source>,
-    pub alias: Option<Ident<'source>>,
+pub struct UseImport<'src> {
+    pub module: Ident<'src>,
+    pub alias: Option<Ident<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Declaration<'source> {
-    Struct(Struct<'source>),
-    Enum(Enum<'source>),
-    Function(Function<'source>),
-    Use { imports: Vec<UseImport<'source>> },
+pub enum Declaration<'src> {
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Function(Function<'src>),
+    Use { imports: Vec<UseImport<'src>> },
 }

@@ -1,3 +1,3 @@
 mod error;
 
-pub use error::{Diagnostic, DiagnosticWithFile, emit_diagnostics};
+pub use error::{Diagnostic, emit_diagnostics};

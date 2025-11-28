@@ -1,6 +1,6 @@
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use ariadne::{Color, Label, Report, ReportKind, sources};
 use span::Span;
-use std::{borrow::Cow, path::Path};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
@@ -15,70 +15,105 @@ impl DiagnosticSeverity {
         match self {
             DiagnosticSeverity::Error => Color::Red,
             DiagnosticSeverity::Warning => Color::Yellow,
-            DiagnosticSeverity::Info => Color::Blue,
+            DiagnosticSeverity::Info => Color::Green,
             DiagnosticSeverity::Hint => Color::Cyan,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct Diagnostic {
-    severity: DiagnosticSeverity,
-    span: Span,
-    message: Cow<'static, str>,
-    note: Option<Cow<'static, str>>,
-    help: Option<Cow<'static, str>>,
-    labels: Vec<(Cow<'static, str>, Span, DiagnosticSeverity)>,
+enum Element<'src> {
+    Label {
+        message: Cow<'static, str>,
+        span: Span<'src>,
+        severity: DiagnosticSeverity,
+    },
+    Note(Cow<'static, str>),
+    Help(Cow<'static, str>),
 }
 
-impl Diagnostic {
+#[derive(Clone)]
+pub struct Diagnostic<'src> {
+    severity: DiagnosticSeverity,
+    span: Span<'src>,
+    message: Cow<'static, str>,
+    elements: Vec<Element<'src>>,
+}
+
+impl<'src> Diagnostic<'src> {
     pub fn new<S: Into<Cow<'static, str>>>(
         severity: DiagnosticSeverity,
-        span: Span,
+        span: Span<'src>,
         message: S,
     ) -> Self {
         Self {
             severity,
             span,
             message: message.into(),
-            note: None,
-            help: None,
-            labels: Vec::new(),
+            elements: Vec::new(),
         }
     }
 
     pub fn with_note(mut self, suggestion: impl Into<Cow<'static, str>>) -> Self {
-        self.note = Some(suggestion.into());
+        self.elements.push(Element::Note(suggestion.into()));
         self
     }
 
     pub fn with_help(mut self, help: impl Into<Cow<'static, str>>) -> Self {
-        self.help = Some(help.into());
+        self.elements.push(Element::Help(help.into()));
         self
     }
 
-    pub fn with_error_label(mut self, span: Span, message: impl Into<Cow<'static, str>>) -> Self {
-        self.labels
-            .push((message.into(), span, DiagnosticSeverity::Error));
+    pub fn with_error_label(
+        mut self,
+        span: Span<'src>,
+        message: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.elements.push(Element::Label {
+            message: message.into(),
+            span,
+            severity: DiagnosticSeverity::Error,
+        });
         self
     }
-    pub fn with_warning_label(mut self, span: Span, message: impl Into<Cow<'static, str>>) -> Self {
-        self.labels
-            .push((message.into(), span, DiagnosticSeverity::Warning));
+    pub fn with_warning_label(
+        mut self,
+        span: Span<'src>,
+        message: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.elements.push(Element::Label {
+            message: message.into(),
+            span,
+            severity: DiagnosticSeverity::Warning,
+        });
         self
     }
-    pub fn with_info_label(mut self, span: Span, message: impl Into<Cow<'static, str>>) -> Self {
-        self.labels
-            .push((message.into(), span, DiagnosticSeverity::Info));
+    pub fn with_info_label(
+        mut self,
+        span: Span<'src>,
+        message: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.elements.push(Element::Label {
+            message: message.into(),
+            span,
+            severity: DiagnosticSeverity::Info,
+        });
         self
     }
-    pub fn with_hint_label(mut self, span: Span, message: impl Into<Cow<'static, str>>) -> Self {
-        self.labels
-            .push((message.into(), span, DiagnosticSeverity::Hint));
+    pub fn with_hint_label(
+        mut self,
+        span: Span<'src>,
+        message: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.elements.push(Element::Label {
+            message: message.into(),
+            span,
+            severity: DiagnosticSeverity::Hint,
+        });
         self
     }
 
-    pub fn report_kind(&self) -> ReportKind<'_> {
+    fn report_kind(&self) -> ReportKind<'_> {
         match self.severity {
             DiagnosticSeverity::Error => ReportKind::Error,
             DiagnosticSeverity::Warning => ReportKind::Warning,
@@ -87,68 +122,58 @@ impl Diagnostic {
     }
 
     /// Create an info diagnostic
-    pub fn info(span: Span, message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn info(span: Span<'src>, message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(DiagnosticSeverity::Info, span, message)
     }
 
     /// Create a hint diagnostic
-    pub fn hint(span: Span, message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn hint(span: Span<'src>, message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(DiagnosticSeverity::Hint, span, message)
     }
 
     /// Create an error diagnostic
-    pub fn error(span: Span, message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn error(span: Span<'src>, message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(DiagnosticSeverity::Error, span, message)
     }
 
     /// Create a warning diagnostic
-    pub fn warning(span: Span, message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn warning(span: Span<'src>, message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(DiagnosticSeverity::Warning, span, message)
     }
-
-    pub fn with_file<'source>(self, file: &'source Path) -> DiagnosticWithFile<'source> {
-        DiagnosticWithFile {
-            diagnostic: self,
-            file,
-        }
-    }
 }
 
-#[derive(Clone)]
-pub struct DiagnosticWithFile<'source> {
-    diagnostic: Diagnostic,
-    file: &'source Path,
-}
-
-pub fn emit_diagnostics<'source>(
-    diagnostics: impl IntoIterator<Item = DiagnosticWithFile<'source>>,
-    source: &'source str,
-) {
-    for DiagnosticWithFile { diagnostic, file } in diagnostics {
-        let file = file.display().to_string();
-
-        let span: std::ops::Range<usize> = diagnostic.span.into();
-        let mut report = Report::build(diagnostic.report_kind(), (file.clone(), span.clone()))
+pub fn emit_diagnostics<'src>(diagnostics: impl IntoIterator<Item = Diagnostic<'src>>) {
+    for diagnostic in diagnostics {
+        let range: std::ops::Range<usize> = diagnostic.span.into();
+        let file = diagnostic.span.file().display().to_string();
+        let mut report = Report::build(diagnostic.report_kind(), (file, range))
             .with_message(&diagnostic.message);
 
-        for (label, span, severity) in &diagnostic.labels {
-            let span: std::ops::Range<usize> = (*span).into();
-            report = report.with_label(
-                Label::new((file.clone(), span))
-                    .with_message(label)
-                    .with_color(severity.color()),
-            );
-        }
-        // Add note if available
-        if let Some(suggestion) = &diagnostic.note {
-            report = report.with_note(format!("{}", suggestion));
+        let mut srcs = Vec::with_capacity(diagnostic.elements.len());
+        for element in &diagnostic.elements {
+            match element {
+                Element::Note(note) => {
+                    report.add_note(note);
+                }
+                Element::Help(help) => {
+                    report.add_help(help);
+                }
+                Element::Label {
+                    message,
+                    span,
+                    severity,
+                } => {
+                    srcs.push((span.file().display().to_string(), span.source()));
+                    let range: std::ops::Range<usize> = (*span).into();
+                    report.add_label(
+                        Label::new((span.file().display().to_string(), range))
+                            .with_message(message)
+                            .with_color(severity.color()),
+                    );
+                }
+            }
         }
 
-        // Add help text if available
-        if let Some(help) = &diagnostic.help {
-            report = report.with_help(format!("{}", help));
-        }
-
-        let _ = report.finish().eprint((file, Source::from(source)));
+        let _ = report.finish().eprint(sources(srcs));
     }
 }

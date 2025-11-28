@@ -1,15 +1,14 @@
-use error::Diagnostic;
 use span::Span;
 
 #[derive(Debug, Clone)]
-pub struct Program<'source> {
-    pub declarations: Vec<Declaration<'source>>,
+pub struct Program<'src> {
+    pub declarations: Vec<Declaration<'src>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ident<'source> {
-    pub inner: &'source str,
-    pub span: Span,
+pub struct Ident<'src> {
+    pub inner: &'src str,
+    pub span: Span<'src>,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -92,25 +91,23 @@ pub enum BinaryOp {
     Or,
 }
 
-impl TryFrom<Op> for BinaryOp {
-    type Error = Diagnostic;
-
-    fn try_from(op: Op) -> Result<Self, Self::Error> {
+impl BinaryOp {
+    pub fn from_op(op: Op) -> Option<BinaryOp> {
         match op {
-            Op::Add => Ok(BinaryOp::Add),
-            Op::Sub => Ok(BinaryOp::Sub),
-            Op::Mul => Ok(BinaryOp::Mul),
-            Op::Div => Ok(BinaryOp::Div),
-            Op::Mod => Ok(BinaryOp::Mod),
+            Op::Add => Some(BinaryOp::Add),
+            Op::Sub => Some(BinaryOp::Sub),
+            Op::Mul => Some(BinaryOp::Mul),
+            Op::Div => Some(BinaryOp::Div),
+            Op::Mod => Some(BinaryOp::Mod),
             Op::Exp => todo!(),
-            Op::And => Ok(BinaryOp::And),
-            Op::Or => Ok(BinaryOp::Or),
-            Op::Lt => Ok(BinaryOp::Lt),
-            Op::LtEq => Ok(BinaryOp::LtEq),
-            Op::Gt => Ok(BinaryOp::Gt),
-            Op::GtEq => Ok(BinaryOp::GtEq),
-            Op::Ne => Ok(BinaryOp::Ne),
-            Op::Eq => Ok(BinaryOp::Eq),
+            Op::And => Some(BinaryOp::And),
+            Op::Or => Some(BinaryOp::Or),
+            Op::Lt => Some(BinaryOp::Lt),
+            Op::LtEq => Some(BinaryOp::LtEq),
+            Op::Gt => Some(BinaryOp::Gt),
+            Op::GtEq => Some(BinaryOp::GtEq),
+            Op::Ne => Some(BinaryOp::Ne),
+            Op::Eq => Some(BinaryOp::Eq),
             Op::Bang => todo!(),
             Op::Call => todo!(),
             Op::StructInstance => todo!(),
@@ -126,51 +123,51 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub struct Call<'source> {
-    pub callee: Box<Expr<'source>>,
-    pub args: Vec<Expr<'source>>,
+pub struct Call<'src> {
+    pub callee: Box<Expr<'src>>,
+    pub args: Vec<Expr<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExprKind<'source> {
+pub enum ExprKind<'src> {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
     /// None if empty string
-    StringLiteral(Option<&'source str>),
-    StringInterpolation(Vec<Expr<'source>>),
-    Ident(Ident<'source>),
+    StringLiteral(Option<&'src str>),
+    StringInterpolation(Vec<Expr<'src>>),
+    Ident(Ident<'src>),
     Binary {
         op: BinaryOp,
-        left: Box<Expr<'source>>,
-        right: Box<Expr<'source>>,
+        left: Box<Expr<'src>>,
+        right: Box<Expr<'src>>,
     },
     // Unary operations
     Unary {
         op: UnaryOp,
-        expr: Box<Expr<'source>>,
+        expr: Box<Expr<'src>>,
     },
 
-    Call(Call<'source>),
+    Call(Call<'src>),
     StructInstance {
-        name: Ident<'source>,
-        fields: Vec<(Ident<'source>, Expr<'source>)>, // field name -> value
+        name: Ident<'src>,
+        fields: Vec<(Ident<'src>, Expr<'src>)>, // field name -> value
     },
     Member {
-        object: Box<Expr<'source>>,
-        field: Ident<'source>,
+        object: Box<Expr<'src>>,
+        field: Ident<'src>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct Expr<'source> {
-    pub kind: ExprKind<'source>,
-    pub span: Span,
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
+    pub span: Span<'src>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeKind<'source> {
-    Ident(Ident<'source>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeKind<'src> {
+    Ident(Ident<'src>),
     Int,
     Float,
     String,
@@ -191,28 +188,28 @@ impl std::fmt::Display for TypeKind<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type<'source> {
-    pub span: Span,
-    pub kind: TypeKind<'source>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Type<'src> {
+    pub span: Span<'src>,
+    pub kind: TypeKind<'src>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Param<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub ty: Type<'source>,
-    pub default: Option<Expr<'source>>,
+pub struct Param<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub ty: Type<'src>,
+    pub default: Option<Expr<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Block<'source> {
-    pub span: Span,
-    pub statements: Vec<Statement<'source>>,
+pub struct Block<'src> {
+    pub span: Span<'src>,
+    pub statements: Vec<Statement<'src>>,
 }
 
-impl<'source> Block<'source> {
-    pub fn set_span(mut self, span: Span) -> Self {
+impl<'src> Block<'src> {
+    pub fn set_span(mut self, span: Span<'src>) -> Self {
         self.span = span;
         self
     }
@@ -226,16 +223,16 @@ pub enum Vis {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub params: Vec<Param<'source>>,
-    pub ret_ty: Type<'source>,
-    pub body: Block<'source>,
+pub struct Function<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: Type<'src>,
+    pub body: Block<'src>,
     pub vis: Vis,
 }
 
-impl<'source> Function<'source> {
+impl<'src> Function<'src> {
     pub fn set_vis(mut self, vis: Vis) -> Self {
         self.vis = vis;
         self
@@ -243,52 +240,71 @@ impl<'source> Function<'source> {
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumVariant<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub fields: Vec<Type<'source>>,
+pub struct EnumVariant<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub fields: Vec<Type<'src>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Struct<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub fields: Vec<(Ident<'source>, Type<'source>)>,
+pub struct Struct<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub fields: Vec<(Ident<'src>, Type<'src>)>,
     pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]
-pub struct Enum<'source> {
-    pub span: Span,
-    pub name: Ident<'source>,
-    pub variants: Vec<EnumVariant<'source>>,
+pub struct Enum<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub variants: Vec<EnumVariant<'src>>,
     pub vis: Vis,
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement<'source> {
+pub enum Statement<'src> {
     Let {
-        name: Ident<'source>,
-        ty: Option<Type<'source>>,
-        expr: Expr<'source>,
+        name: Ident<'src>,
+        ty: Option<Type<'src>>,
+        expr: Expr<'src>,
         mutable: bool,
-        span: Span,
+        span: Span<'src>,
     },
     Return {
-        span: Span,
-        expr: Option<Expr<'source>>,
+        span: Span<'src>,
+        expr: Option<Expr<'src>>,
     },
-    Function(Function<'source>),
+    Function(Function<'src>),
     // Type definitions
-    Struct(Struct<'source>),
-    Enum(Enum<'source>),
-    Expr(Expr<'source>),
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Expr(Expr<'src>),
+}
+
+impl<'src> Statement<'src> {
+    pub fn span(&self) -> &Span<'src> {
+        match self {
+            Statement::Let { span, .. } => span,
+            Statement::Return { span, .. } => span,
+            Statement::Function(function) => &function.span,
+            Statement::Struct(strct) => &strct.span,
+            Statement::Enum(e) => &e.span,
+            Statement::Expr(expr) => &expr.span,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub enum Declaration<'source> {
-    Struct(Struct<'source>),
-    Enum(Enum<'source>),
-    Function(Function<'source>),
-    Use { import: Vec<Ident<'source>> },
+pub struct Use<'src> {
+    pub import: Vec<Ident<'src>>,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Declaration<'src> {
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Function(Function<'src>),
+    Use(Use<'src>),
 }

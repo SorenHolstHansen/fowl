@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
     Token,
     lexer_error::{LexerError, LexerErrorKind},
@@ -9,6 +11,7 @@ use span::Span;
 #[derive(Clone)]
 pub struct Lexer<'src> {
     pub(crate) input: &'src str,
+    pub(crate) path: &'src Path,
     pub(crate) token: usize,
     pub(crate) cursor: usize,
     pub(crate) marker: usize,
@@ -20,9 +23,10 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
+    pub fn new(source: &'src str, path: &'src Path) -> Self {
         Lexer {
             input: source,
+            path,
             token: 0,
             cursor: 0,
             marker: 0,
@@ -45,8 +49,8 @@ impl<'src> Lexer<'src> {
         self.peeked.as_ref()
     }
 
-    pub(crate) fn span(&self) -> Span {
-        Span::new(self.token, self.cursor)
+    pub(crate) fn span(&self) -> Span<'src> {
+        Span::new(self.token, self.cursor, self.path, self.input)
     }
 
     pub(crate) fn error(
@@ -103,7 +107,7 @@ impl<'src> Lexer<'src> {
                 | TokenKind::RBracket => {
                     self.force_next_token = Some(Ok(Token {
                         kind: TokenKind::Semicolon,
-                        span: Span::new(self.cursor, self.cursor + 1),
+                        span: Span::new(self.cursor, self.cursor + 1, self.path, self.input),
                     }))
                 }
                 _ => {}
@@ -145,12 +149,14 @@ impl<'src> Lexer<'src> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{path::PathBuf, str::FromStr};
 
     #[test]
     fn test_lex2() {
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo");
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
-        let lexer = Lexer::new(source);
+        let lexer = Lexer::new(source, path);
         for token in lexer {
             match token {
                 Ok(t) => {

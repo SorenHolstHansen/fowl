@@ -105,7 +105,7 @@ impl Compiler {
             })
             .collect();
 
-        let has_main = functions.iter().any(|f| f.name.inner == "main");
+        let has_main = functions.iter().any(|f| f.name == "main");
         if !has_main {
             bail!("Please provide a 'main' function");
         }
@@ -130,12 +130,7 @@ impl Compiler {
     }
 
     fn lower_function_body(&mut self, function: &ast::Function) -> anyhow::Result<()> {
-        let func_id = match self
-            .module
-            .declarations()
-            .get_name(function.name.inner)
-            .unwrap()
-        {
+        let func_id = match self.module.declarations().get_name(&function.name).unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
         };
@@ -149,8 +144,9 @@ impl Compiler {
         function_compiler.compile(function)?;
         function_compiler.finalize();
 
-        // println!("fn main:\n{}", &self.ctx.func);
         self.module.define_function(func_id, &mut self.ctx).unwrap();
+
+        println!("{}:\n{}", function.name, self.ctx.func);
 
         self.ctx.clear();
         Ok(())
@@ -177,7 +173,7 @@ impl Compiler {
         };
         let function_id = self
             .module
-            .declare_function(function.name.inner, Linkage::Export, &sig)
+            .declare_function(&function.name, Linkage::Export, &sig)
             .unwrap();
 
         Ok(function_id)
@@ -238,21 +234,20 @@ impl<'a> FunctionCompiler<'a> {
             .params
             .iter()
             .map(|p| {
-                let ty = type_from_ast(&p.ty.kind, &self.module).unwrap().unwrap();
+                let ty = type_from_ast(&p.ty.kind, self.module).unwrap().unwrap();
                 AbiParam::new(ty)
             })
             .collect();
 
-        let ret_ty = AbiParam::new(
-            type_from_ast(&function.ret_ty, &self.module)
-                .unwrap()
-                .unwrap(),
-        );
+        let mut returns = Vec::new();
+        if let Some(t) = type_from_ast(&function.ret_ty, self.module).unwrap() {
+            returns.push(AbiParam::new(t))
+        }
 
         self.builder.func.signature = Signature {
             call_conv,
             params,
-            returns: vec![ret_ty],
+            returns,
         };
 
         // Create the functions entry block.
@@ -265,7 +260,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.seal_block(block0);
         for (i, param) in function.params.iter().enumerate() {
             let val = self.builder.block_params(block0)[i];
-            let ty = type_from_ast(&param.ty.kind, &self.module)?.unwrap();
+            let ty = type_from_ast(&param.ty.kind, self.module)?.unwrap();
             let var = self
                 .variables
                 .entry(param.name.inner.to_string())
@@ -273,12 +268,35 @@ impl<'a> FunctionCompiler<'a> {
             self.builder.def_var(*var, val);
         }
 
-        for statement in &function.body.statements {
-            self.lower_statement(statement)?;
+        if function.name == "std.io.print" {
+            let print_func_id = match self.module.declarations().get_name("rt_print_str").unwrap() {
+                cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+                cranelift_module::FuncOrDataId::Data(_) => todo!(),
+            };
+            let local_callee = self
+                .module
+                .declare_func_in_func(print_func_id, self.builder.func);
+            let var = self
+                .variables
+                .get("message")
+                .expect("Could not find variable 'message'");
+            let v = self.builder.use_var(*var);
+            let call = self.builder.ins().call(local_callee, &[v]);
+            self.builder.inst_results(call);
+            self.builder.ins().return_(&[]);
+        } else {
+            for statement in &function.body.statements {
+                self.lower_statement(statement)?;
+            }
+
+            // If this is a void function and it doesn't end with a return, add one
+            if self.builder.func.signature.returns.is_empty() {
+                self.builder.ins().return_(&[]);
+            }
         }
 
         if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
-            panic!("verifier error: {err}");
+            panic!("verifier error: {} {err}", function.name);
         }
 
         Ok(())
@@ -289,27 +307,22 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn eval_call(&mut self, call: &ast::Call) -> anyhow::Result<Option<Value>> {
-        match &*call.callee {
-            ast::Expr::Ident { ident, .. } => {
-                let func_id = match self.module.declarations().get_name(ident.inner).unwrap() {
-                    cranelift_module::FuncOrDataId::Func(func_id) => func_id,
-                    cranelift_module::FuncOrDataId::Data(_) => todo!(),
-                };
-                let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
-                let mut args = Vec::with_capacity(call.args.len());
-                for arg in &call.args {
-                    args.push(
-                        self.eval_expr(arg)?
-                            .expect("Should have been caught in type checking, that this is void"),
-                    );
-                }
-                let call = self.builder.ins().call(local_callee, &args);
-                let inst_results = self.builder.inst_results(call);
-                Ok(inst_results.first().cloned())
-                // gn
-            }
-            _ => todo!(),
+        let func_id = match self.module.declarations().get_name(&call.callee).unwrap() {
+            cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+            cranelift_module::FuncOrDataId::Data(_) => todo!(),
+        };
+        let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
+        let mut args = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            args.push(
+                self.eval_expr(arg)?
+                    .expect("Should have been caught in type checking, that this is void"),
+            );
         }
+        let call = self.builder.ins().call(local_callee, &args);
+        let inst_results = self.builder.inst_results(call);
+        Ok(inst_results.first().cloned())
+        // gn
     }
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Option<Value>> {
@@ -321,11 +334,17 @@ impl<'a> FunctionCompiler<'a> {
             ast::Expr::FloatLiteral(_) => todo!(),
             ast::Expr::BoolLiteral(_) => todo!(),
             ast::Expr::StringLiteral(s) => {
-                let s = s.unwrap_or_default();
+                let mut data_bytes = match s {
+                    Some("\\n") => "\n".as_bytes().to_vec(),
+                    Some("\\t") => "\t".as_bytes().to_vec(),
+                    Some(s) => s.as_bytes().to_vec(),
+                    None => "".as_bytes().to_vec(),
+                };
+                data_bytes.push(0);
                 // Setup global string
                 let id = self.module.declare_anonymous_data(false, false).unwrap();
                 let mut data_description = DataDescription::new();
-                data_description.define(format!("{s}\00").as_bytes().to_vec().into_boxed_slice());
+                data_description.define(data_bytes.into_boxed_slice());
                 self.module.define_data(id, &data_description).unwrap();
 
                 let local_id = self.module.declare_data_in_func(id, self.builder.func);
@@ -341,7 +360,7 @@ impl<'a> FunctionCompiler<'a> {
                 let var = self
                     .variables
                     .get(ident.inner)
-                    .expect(&format!("Could not find variable '{}'", ident.inner));
+                    .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
                 let v = self.builder.use_var(*var);
                 Ok(Some(v))
             }
@@ -410,13 +429,17 @@ impl<'a> FunctionCompiler<'a> {
                 ast::Expr::IntLiteral(_) => {
                     v = self.format_int_fn(v)?;
                 }
-                ast::Expr::Ident { .. } => {
-                    // TODO: Check the type of ident
-                    v = self.format_int_fn(v)?;
+                ast::Expr::Ident { ty, .. } => {
+                    // Check the type and only format if it's an integer
+                    if matches!(ty, ast::TypeKind::Int) {
+                        v = self.format_int_fn(v)?;
+                    }
                 }
-                ast::Expr::Binary { .. } => {
-                    // TODO: Check the type of ident
-                    v = self.format_int_fn(v)?;
+                ast::Expr::Binary { ty, .. } => {
+                    // Check the type and only format if it's an integer
+                    if matches!(ty, ast::TypeKind::Int) {
+                        v = self.format_int_fn(v)?;
+                    }
                 }
                 _ => {}
             }
@@ -513,13 +536,10 @@ pub fn build_executable(
 
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
-    println!("LINKING");
     match cc.output() {
-        Ok(res) => {
-            println!("Linking successful. {res:?}");
-        }
+        Ok(_) => {}
         Err(e) => {
-            println!("ERROR {e:?}");
+            println!("LINKING ERROR {e:?}");
             panic!()
         }
     }

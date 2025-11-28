@@ -101,8 +101,8 @@ impl<'src> Iterator for Lexer<'src> {
         // Strings
         <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }
         <STRING> "}"                   { if self.interpolation_depth > 0 { self.interpolation_depth -= 1; self.cond = YYC_STRING; return self.token(TokenKind::RBrace) } else { return self.error(LexerErrorKind::UnmatchedInterpolation(self.token_text())) } }
-        <STRING> [^"\\{\\}]+              { return self.token(TokenKind::StringLiteral(self.token_text())) }
-        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(&self.input[(self.token + 1)..(self.token + 2)])); }
+        <STRING> [^"\\{\\}]+           { return self.token(TokenKind::StringLiteral(self.token_text())) }
+        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(self.token_text())); }
         <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
         // string end
         <STRING> "\""                  => INIT { return self.token(TokenKind::StringInterpolationEnd) }
