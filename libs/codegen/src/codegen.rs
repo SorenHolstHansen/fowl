@@ -5,7 +5,7 @@ use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
 use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
-use typecheck::ast::{self, Program};
+use typecheck::ast::{self, Program, TypeKind};
 
 pub struct CodegenOptions {
     /// Target triple for cross-compilation (defaults to native)
@@ -411,6 +411,24 @@ impl<'a> FunctionCompiler<'a> {
         Ok(self.builder.inst_results(call)[0])
     }
 
+    fn format_float_fn(&mut self, value: Value) -> anyhow::Result<Value> {
+        let func_id = match self
+            .module
+            .declarations()
+            .get_name("rt_double_to_str")
+            .unwrap()
+        {
+            cranelift_module::FuncOrDataId::Func(func_id) => func_id,
+            cranelift_module::FuncOrDataId::Data(_) => todo!(),
+        };
+        let local_callee = self.module.declare_func_in_func(func_id, self.builder.func);
+
+        let args = vec![value];
+
+        let call = self.builder.ins().call(local_callee, &args);
+        Ok(self.builder.inst_results(call)[0])
+    }
+
     fn eval_string_interpolation(&mut self, parts: &[ast::Expr]) -> anyhow::Result<Value> {
         // Setup global string
         let id = self.module.declare_anonymous_data(true, false).unwrap();
@@ -425,22 +443,14 @@ impl<'a> FunctionCompiler<'a> {
 
         for part in parts {
             let mut v = self.eval_expr(part)?.expect("Found void");
-            match part {
-                ast::Expr::IntLiteral(_) => {
+            match part.ty() {
+                TypeKind::Int => {
                     v = self.format_int_fn(v)?;
                 }
-                ast::Expr::Ident { ty, .. } => {
-                    // Check the type and only format if it's an integer
-                    if matches!(ty, ast::TypeKind::Int) {
-                        v = self.format_int_fn(v)?;
-                    }
+                TypeKind::Float => {
+                    v = self.format_float_fn(v)?;
                 }
-                ast::Expr::Binary { ty, .. } => {
-                    // Check the type and only format if it's an integer
-                    if matches!(ty, ast::TypeKind::Int) {
-                        v = self.format_int_fn(v)?;
-                    }
-                }
+                TypeKind::Ident(_) => {}
                 _ => {}
             }
             let new_result = self.strcat(result_ptr, v)?;

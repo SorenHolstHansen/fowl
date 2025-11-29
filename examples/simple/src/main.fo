@@ -1,8 +1,8 @@
 use simple.utils.add
-use std.io.print
+use std.io.println
 
 fn main() int {
 	let a = 5
-	print("a = {a}")
+	println("a = {a}")
 	return add(a, 2)
 }
