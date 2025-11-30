@@ -157,6 +157,12 @@ pub enum ExprKind<'src> {
         object: Box<Expr<'src>>,
         field: Ident<'src>,
     },
+    If {
+        cond: Box<Expr<'src>>,
+        then: Block<'src>,
+        else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
+        else_block: Option<Block<'src>>,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -469,6 +469,7 @@ impl<'src> Typechecker<'src> {
             },
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),
+            parser_ast::ExprKind::If { .. } => todo!(),
         }
     }
 

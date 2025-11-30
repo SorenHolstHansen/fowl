@@ -69,10 +69,7 @@ impl<'src> Parser<'src> {
         Program { declarations }
     }
 
-    fn expect_token(
-        &mut self,
-        token: TokenKind<'src>,
-    ) -> Result<Token<'src>, Diagnostic<'src>> {
+    fn expect_token(&mut self, token: TokenKind<'src>) -> Result<Token<'src>, Diagnostic<'src>> {
         match self.next_token() {
             Some(t) if token == t.kind => Ok(t),
             Some(t) => Err(Diagnostic::error(
@@ -196,7 +193,10 @@ impl<'src> Parser<'src> {
                 kind: TokenKind::Eof,
                 span,
             } => Err(Diagnostic::error(span, "Unexpected EOF")),
-            Token { kind: _, span } => Err(Diagnostic::error(span, "expected identifier")),
+            Token { kind: _, span } => {
+                panic!();
+                Err(Diagnostic::error(span, "expected identifier").with_error_label(span, "here"))
+            }
         }
     }
 
@@ -559,10 +559,28 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Semicolon)?;
                 Ok(Statement::Expr(expr))
             }
+            TokenKind::If => {
+                // Skip the peeked "if"
+                self.next_token();
+                let cond = self.parse_expression(0)?;
+                self.expect_token(TokenKind::LBrace)?;
+                // self.expect_token(TokenKind::LBrace)?;
+
+                Ok(Statement::Expr(Expr {
+                    span: statement_span,
+                    kind: ExprKind::If {
+                        cond: Box::new(cond),
+                        then: todo!(),
+                        else_if_blocks: todo!(),
+                        else_block: todo!(),
+                    },
+                }))
+            }
             t => Err(Diagnostic::error(
                 statement_span,
                 format!("Unexpected token {:?}. Expected statement start.", t),
-            )),
+            )
+            .with_error_label(statement_span, "here")),
         }
     }
 
@@ -587,9 +605,7 @@ impl<'src> Parser<'src> {
         Ok(statements)
     }
 
-    fn parse_string_literal_or_interpolation(
-        &mut self,
-    ) -> Result<Expr<'src>, Diagnostic<'src>> {
+    fn parse_string_literal_or_interpolation(&mut self) -> Result<Expr<'src>, Diagnostic<'src>> {
         let mut exprs = Vec::new();
         while !matches!(
             self.peek_token(),
@@ -700,6 +716,7 @@ impl<'src> Parser<'src> {
                 TokenKind::Percent => Op::Mod,
                 TokenKind::And => Op::And,
                 TokenKind::Or => Op::Or,
+                TokenKind::EqEq => Op::Eq,
                 TokenKind::Lt => Op::Lt,
                 TokenKind::LtEq => Op::LtEq,
                 TokenKind::Gt => Op::Gt,
@@ -833,9 +850,7 @@ impl<'src> Parser<'src> {
         Ok(arguments)
     }
 
-    fn parse_struct_fields(
-        &mut self,
-    ) -> Result<Vec<(Ident<'src>, Expr<'src>)>, Diagnostic<'src>> {
+    fn parse_struct_fields(&mut self) -> Result<Vec<(Ident<'src>, Expr<'src>)>, Diagnostic<'src>> {
         let mut fields = Vec::new();
 
         // parent has already eaten left brace as the operator

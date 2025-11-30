@@ -1,8 +1,14 @@
 use simple.utils.add
 use std.io.println
 
-fn main() int {
-	let a = 5
-	println("a = {a}")
-	return add(a, 2)
+fn main() void {
+	let limit = 10
+	let num = 5
+	if num == 5 {
+		println("= 5")
+	} else if num == 7 {
+		println("= 7")
+	} else {
+		println("!= 5, 7")
+	}
 }
