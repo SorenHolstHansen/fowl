@@ -2,7 +2,7 @@ use error::Diagnostic;
 use span::Span;
 use std::num::{ParseFloatError, ParseIntError};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LexerErrorKind<'src> {
     ParseIntError(ParseIntError),
     ParseFloatError(ParseFloatError),
@@ -21,7 +21,7 @@ impl<'src> std::fmt::Display for LexerErrorKind<'src> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LexerError<'src> {
     pub(crate) span: Span<'src>,
     pub(crate) kind: LexerErrorKind<'src>,

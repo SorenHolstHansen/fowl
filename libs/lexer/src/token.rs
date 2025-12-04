@@ -83,7 +83,7 @@ pub enum TokenKind<'src> {
     Eof,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
     pub span: Span<'src>,
@@ -157,5 +157,11 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::SlashEq => write!(f, "/="),
             TokenKind::Eof => write!(f, "EOF"),
         }
+    }
+}
+
+impl std::fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)
     }
 }

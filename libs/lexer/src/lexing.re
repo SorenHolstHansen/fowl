@@ -131,7 +131,7 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "\n"                    { return self.next() }
 
         // EOF
-        <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
+        <INIT, STRING> $               { self.eof = true; return None }
 
         // Anything else
         <INIT, STRING> *               { return self.error(LexerErrorKind::UnexpectedToken(self.token_text())) }

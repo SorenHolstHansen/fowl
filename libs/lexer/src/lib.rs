@@ -41,13 +41,14 @@ pub fn tokenize<'src>(source: &'src str, path: &'src Path) -> Lexer<'src> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{path::PathBuf, str::FromStr};
 
     #[test]
     fn test_lexer() {
-        let path = PathBuf::new("../../../examples/kitchen_sink.fo");
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo").unwrap();
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
-        let mut lexer = tokenize(source, path);
+        let mut lexer = tokenize(source, &path);
 
         let mut previous = match lexer.next() {
             Some(Ok(t)) => t,
