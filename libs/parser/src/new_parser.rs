@@ -1,13 +1,13 @@
 use crate::ast::{
-    Block, Declaration, Expr, ExprKind, Function, Ident, Program, Statement, Type, TypeKind, Use,
-    Vis,
+    BinaryOp, Block, Declaration, Expr, ExprKind, Function, Ident, Program, Statement, Type,
+    TypeKind, Use, Vis,
 };
 use chumsky::{
     IterParser, ParseResult, Parser,
     error::{EmptyErr, Rich},
     extra,
     input::{Stream, ValueInput},
-    prelude::{Recursive, choice, recursive},
+    prelude::*,
     select,
     span::SimpleSpan,
 };
@@ -25,6 +25,7 @@ pub fn parse<'src>(lexer: Lexer<'src>) -> ParseResult<Statement<'src>, EmptyErr>
             None
         }
     }));
+    // TODO: emit lexer errors
 
     let (program, errors) = parser.parse(token_stream).into_output_errors();
     let errors = errors.iter().map(|e| {
@@ -119,31 +120,15 @@ where
     ))
 }
 
-fn parse_expr<'src, I>()
--> impl Parser<'src, I, Expr<'src>, extra::Err<Rich<'src, Token<'src>, SimpleSpan>>>
+fn parse_binary_op<'src, I>()
+-> impl Parser<'src, I, BinaryOp, extra::Err<Rich<'src, Token<'src>, SimpleSpan>>>
 where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
-    recursive(|expr| {
-        let if_parser = parse_token_kind(TokenKind::If)
-            .then(expr)
-            .then(parse_block())
-            .map(|((if_keyword, expr), block)| Expr {
-                span: if_keyword.span.merge(block.span),
-                kind: ExprKind::If {
-                    cond: Box::new(expr),
-                    then: block,
-                    else_if_blocks: Vec::new(),
-                    else_block: None,
-                },
-            });
-
-        let int_literal_parser = select! {
-            Token { kind: TokenKind::IntLiteral(i), span } => Expr {span, kind: ExprKind::IntLiteral(i)}
-        };
-
-        choice((if_parser, int_literal_parser)).boxed()
-    })
+    choice((
+        parse_token_kind(TokenKind::Eq).to(BinaryOp::Eq),
+        parse_token_kind(TokenKind::Neq).to(BinaryOp::Ne),
+    ))
 }
 
 fn parse_statement<'src, I>()
@@ -154,24 +139,39 @@ where
     let mut stmt = Recursive::declare();
     let mut expr = Recursive::declare();
 
-    stmt.define({
-        let block_parser = stmt.clone()
-            .repeated()
-            .collect::<Vec<_>>()
-            .delimited_by(
-                parse_token_kind(TokenKind::LBrace),
-                parse_token_kind(TokenKind::RBrace),
-            )
-            .map(|statements: Vec<Statement<'src>>| Block {
-                span: statements
-                    .first()
-                    .unwrap()
-                    .span()
-                    .merge(*statements.last().unwrap().span()),
-                statements,
+    let block_parser = stmt
+        .clone()
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(
+            parse_token_kind(TokenKind::LBrace),
+            parse_token_kind(TokenKind::RBrace),
+        )
+        .map(|statements: Vec<Statement<'src>>| Block {
+            span: statements
+                .first()
+                .unwrap()
+                .span()
+                .merge(*statements.last().unwrap().span()),
+            statements,
+        });
+
+    expr.define({
+            let ident_parser = parse_ident().map(|i| Expr { kind: ExprKind::Ident(i), span: i.span });
+
+            let binary_parser = expr.clone().then(parse_binary_op()).then(expr.clone()).map(|((left, op), right): ((Expr<'src>, BinaryOp), Expr<'src>)| {
+                Expr {
+                    span: left.span.merge(right.span),
+                    kind: ExprKind::Binary { op, left: Box::new(left), right: Box::new(right) },
+                }
             });
 
-        expr.define({
+            let int_literal_parser = select! {
+                Token { kind: TokenKind::IntLiteral(i), span } => Expr {span, kind: ExprKind::IntLiteral(i)}
+            };
+
+
+
             let if_parser = parse_token_kind(TokenKind::If)
                 .then(expr.clone())
                 .then(block_parser)
@@ -185,13 +185,10 @@ where
                     },
                 });
 
-            let int_literal_parser = select! {
-                Token { kind: TokenKind::IntLiteral(i), span } => Expr {span, kind: ExprKind::IntLiteral(i)}
-            };
-
-            choice((if_parser, int_literal_parser)).boxed()
+            choice((binary_parser, if_parser, int_literal_parser, ident_parser)).boxed()
         });
 
+    stmt.define({
         let let_parser = parse_token_kind(TokenKind::Let)
             .then(parse_token_kind(TokenKind::Mut).or_not())
             .then(parse_ident())
