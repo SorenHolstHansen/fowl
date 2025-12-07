@@ -11,17 +11,16 @@ use chumsky::{
     select,
     span::SimpleSpan,
 };
-use error::{Diagnostic, emit_diagnostics};
+use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
 
 pub fn parse<'src>(lexer: Lexer<'src>) -> ParseResult<Statement<'src>, EmptyErr> {
     let parser = program_parser();
-    let mut errors: Vec<Diagnostic<'src>> = Vec::new();
 
     let token_stream = Stream::from_iter(lexer.filter_map(move |t| match t {
         Ok(t) => Some(t),
         Err(e) => {
-            errors.push((&e).into());
+            Diagnostic::from(&e).print();
             None
         }
     }));
@@ -32,7 +31,7 @@ pub fn parse<'src>(lexer: Lexer<'src>) -> ParseResult<Statement<'src>, EmptyErr>
         let t = e.found().unwrap();
         Diagnostic::error(t.span, e.to_string()).with_error_label(t.span, e.to_string())
     });
-    emit_diagnostics(errors);
+    errors.for_each(|e| e.print());
 
     todo!()
 }
@@ -126,7 +125,7 @@ where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
     choice((
-        parse_token_kind(TokenKind::Eq).to(BinaryOp::Eq),
+        parse_token_kind(TokenKind::EqEq).to(BinaryOp::Eq),
         parse_token_kind(TokenKind::Neq).to(BinaryOp::Ne),
     ))
 }
@@ -136,59 +135,80 @@ fn parse_statement<'src, I>()
 where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
-    let mut stmt = Recursive::declare();
-    let mut expr = Recursive::declare();
-
-    let block_parser = stmt
-        .clone()
-        .repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(
-            parse_token_kind(TokenKind::LBrace),
-            parse_token_kind(TokenKind::RBrace),
-        )
-        .map(|statements: Vec<Statement<'src>>| Block {
-            span: statements
-                .first()
-                .unwrap()
-                .span()
-                .merge(*statements.last().unwrap().span()),
-            statements,
-        });
-
-    expr.define({
-            let ident_parser = parse_ident().map(|i| Expr { kind: ExprKind::Ident(i), span: i.span });
-
-            let binary_parser = expr.clone().then(parse_binary_op()).then(expr.clone()).map(|((left, op), right): ((Expr<'src>, BinaryOp), Expr<'src>)| {
-                Expr {
-                    span: left.span.merge(right.span),
-                    kind: ExprKind::Binary { op, left: Box::new(left), right: Box::new(right) },
-                }
+    recursive(|stmt| {
+        let expr = recursive(|expr| {
+            // Base parsers  (primary expressions that can appear in binary operations)
+            let ident_parser = parse_ident().map(|i| Expr {
+                kind: ExprKind::Ident(i),
+                span: i.span,
             });
 
             let int_literal_parser = select! {
                 Token { kind: TokenKind::IntLiteral(i), span } => Expr {span, kind: ExprKind::IntLiteral(i)}
             };
 
+            // Primary atom parser: only simple expressions that can be operands in binary expressions
+            let primary_atom = choice((int_literal_parser, ident_parser)).boxed();
 
+            // Binary expression parser: primary_atom (op primary_atom)*
+            // This avoids left recursion by parsing the first atom, then zero or more (op atom) pairs
+            let binary_expr = primary_atom
+                .clone()
+                .then(
+                    parse_binary_op()
+                        .then(primary_atom)
+                        .repeated()
+                        .collect::<Vec<_>>(),
+                )
+                .map(|(first, rest): (Expr<'src>, Vec<(BinaryOp, Expr<'src>)>)| {
+                    rest.into_iter().fold(first, |left, (op, right)| Expr {
+                        span: left.span.merge(right.span),
+                        kind: ExprKind::Binary {
+                            op,
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        },
+                    })
+                })
+                .boxed();
 
+            // Block parser using recursive stmt
+            let block_parser = stmt
+                .clone()
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(
+                    parse_token_kind(TokenKind::LBrace),
+                    parse_token_kind(TokenKind::RBrace),
+                )
+                .map(|statements: Vec<Statement<'src>>| Block {
+                    span: statements
+                        .first()
+                        .unwrap()
+                        .span()
+                        .merge(*statements.last().unwrap().span()),
+                    statements,
+                });
+
+            // If expression parser - uses expr recursively for condition to allow nested expressions
             let if_parser = parse_token_kind(TokenKind::If)
                 .then(expr.clone())
                 .then(block_parser)
-                .map(|((if_keyword, expr), block)| Expr {
+                .map(|((if_keyword, condition), block)| Expr {
                     span: if_keyword.span.merge(block.span),
                     kind: ExprKind::If {
-                        cond: Box::new(expr),
+                        cond: Box::new(condition),
                         then: block,
                         else_if_blocks: Vec::new(),
                         else_block: None,
                     },
                 });
 
-            choice((binary_parser, if_parser, int_literal_parser, ident_parser)).boxed()
+            // Full expression parser: if or binary expression
+            choice((if_parser, binary_expr)).boxed()
         });
 
-    stmt.define({
+        // Let statement parser
         let let_parser = parse_token_kind(TokenKind::Let)
             .then(parse_token_kind(TokenKind::Mut).or_not())
             .then(parse_ident())
@@ -211,9 +231,7 @@ where
             );
 
         choice((let_parser, expr.map(Statement::Expr))).boxed()
-    });
-
-    stmt
+    })
 }
 
 fn parse_block<'src, I>()

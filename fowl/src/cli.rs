@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use codegen::{CodegenOptions, build_executable};
-use error::emit_diagnostics;
 use fowl_jsonc::{FowlJsonc, parse_fowl_jsonc};
 use lexer::tokenize;
 use parser::parser::parse;
@@ -134,7 +133,7 @@ fn compile_pipeline(
 
         let (program, parser_errors) = parse(lexer);
         has_errors = !parser_errors.is_empty();
-        emit_diagnostics(parser_errors);
+        parser_errors.iter().for_each(|e| e.print());
         if settings.dump_ast {
             println!("\n== AST ==");
             println!("{:#?}", program);
@@ -151,7 +150,7 @@ fn compile_pipeline(
         }
         let (program, parser_errors) = parse(lexer);
         has_errors = !parser_errors.is_empty();
-        emit_diagnostics(parser_errors);
+        parser_errors.iter().for_each(|e| e.print());
         if settings.dump_ast {
             println!("\n== AST ==");
             println!("{:#?}", program);
@@ -172,7 +171,7 @@ fn compile_pipeline(
     if !typecheck_errors.is_empty() {
         has_errors = true;
     }
-    emit_diagnostics(typecheck_errors);
+    typecheck_errors.iter().for_each(|e| e.print());
     if settings.dump_ast {
         println!("\n== TYPED AST ==");
         println!("{:#?}", program);

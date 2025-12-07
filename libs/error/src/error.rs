@@ -142,15 +142,15 @@ impl<'src> Diagnostic<'src> {
     }
 }
 
-pub fn emit_diagnostics<'src>(diagnostics: impl IntoIterator<Item = Diagnostic<'src>>) {
-    for diagnostic in diagnostics {
-        let range: std::ops::Range<usize> = diagnostic.span.into();
-        let file = diagnostic.span.file().display().to_string();
-        let mut report = Report::build(diagnostic.report_kind(), (file, range))
-            .with_message(&diagnostic.message);
+impl Diagnostic<'_> {
+    pub fn print(&self) {
+        let range: std::ops::Range<usize> = self.span.into();
+        let file = self.span.file().display().to_string();
+        let mut report =
+            Report::build(self.report_kind(), (file, range)).with_message(&self.message);
 
-        let mut srcs = Vec::with_capacity(diagnostic.elements.len());
-        for element in &diagnostic.elements {
+        let mut srcs = Vec::with_capacity(self.elements.len());
+        for element in &self.elements {
             match element {
                 Element::Note(note) => {
                     report.add_note(note);
