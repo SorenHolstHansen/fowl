@@ -29,3 +29,4 @@ Let's take for instance how to manage a DB connection. It is very common to acqu
 - Swift: I like the compile time check for API availbility for a given target.
 - Python: I like list comprehension.
 - Elixir/erlang: Atoms is an interesting idea. Sort of like it, but feels like they need it since they don't have types.
+- Consider dropping if else and go with just match like gleam. Keeps the lang simpler perhaps?

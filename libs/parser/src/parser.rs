@@ -194,7 +194,6 @@ impl<'src> Parser<'src> {
                 span,
             } => Err(Diagnostic::error(span, "Unexpected EOF")),
             Token { kind: _, span } => {
-                panic!();
                 Err(Diagnostic::error(span, "expected identifier").with_error_label(span, "here"))
             }
         }
@@ -562,25 +561,79 @@ impl<'src> Parser<'src> {
             TokenKind::If => {
                 // Skip the peeked "if"
                 self.next_token();
+                self.expect_token(TokenKind::LParen)?;
                 let cond = self.parse_expression(0)?;
-                self.expect_token(TokenKind::LBrace)?;
-                // self.expect_token(TokenKind::LBrace)?;
+                self.expect_token(TokenKind::RParen)?;
+                let then_lbrace = self.expect_token(TokenKind::LBrace)?;
+                let then = self.parse_statements()?;
+                let then_rbrace = self.expect_token(TokenKind::RBrace)?;
+                let mut else_if_blocks = Vec::new();
+                let mut else_block = None;
+                while let Some(Token {
+                    kind: TokenKind::Else,
+                    ..
+                }) = self.peek_token()
+                {
+                    // Skip the peeked 'else'
+                    self.lexer.next();
+
+                    if let Some(Token {
+                        kind: TokenKind::If,
+                        ..
+                    }) = self.peek_token()
+                    {
+                        // Skip the peeked 'if'
+                        self.lexer.next();
+                        self.expect_token(TokenKind::LParen)?;
+                        let cond = self.parse_expression(0)?;
+                        self.expect_token(TokenKind::RParen)?;
+                        let then_lbrace = self.expect_token(TokenKind::LBrace)?;
+                        let then = self.parse_statements()?;
+                        let then_rbrace = self.expect_token(TokenKind::RBrace)?;
+                        else_if_blocks.push((
+                            cond,
+                            Block {
+                                span: then_lbrace.span.merge(then_rbrace.span),
+                                statements: then,
+                            },
+                        ));
+                    } else {
+                        let then_lbrace = self.expect_token(TokenKind::LBrace)?;
+                        let then = self.parse_statements()?;
+                        let then_rbrace = self.expect_token(TokenKind::RBrace)?;
+                        else_block = Some(Block {
+                            span: then_lbrace.span.merge(then_rbrace.span),
+                            statements: then,
+                        });
+                        break;
+                    }
+                }
+
+                self.expect_token(TokenKind::Semicolon)?;
 
                 Ok(Statement::Expr(Expr {
                     span: statement_span,
                     kind: ExprKind::If {
                         cond: Box::new(cond),
-                        then: todo!(),
-                        else_if_blocks: todo!(),
-                        else_block: todo!(),
+                        then: Block {
+                            span: then_lbrace.span.merge(then_rbrace.span),
+                            statements: then,
+                        },
+                        else_if_blocks,
+                        else_block,
                     },
                 }))
             }
-            t => Err(Diagnostic::error(
-                statement_span,
-                format!("Unexpected token {:?}. Expected statement start.", t),
-            )
-            .with_error_label(statement_span, "here")),
+            _ => {
+                let e = self.parse_expression(0)?;
+                self.expect_token(TokenKind::Semicolon)?;
+                Ok(Statement::Expr(e))
+                //     Err(Diagnostic::error(
+                //     statement_span,
+                //     format!("Unexpected token {:?}. Expected statement start.", t),
+                // )
+                // .with_error_label(statement_span, "here"))},
+            }
         }
     }
 

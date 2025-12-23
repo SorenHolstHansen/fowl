@@ -1,6 +1,9 @@
 use anyhow::bail;
 use cranelift::prelude::{isa::TargetIsa, *};
-use cranelift_codegen::{Context, ir::Type};
+use cranelift_codegen::{
+    Context,
+    ir::{BlockArg, Type},
+};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
 use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
@@ -141,7 +144,10 @@ impl Compiler {
             self.isa.clone(),
             &mut self.module,
         );
-        function_compiler.compile(function)?;
+        if let Err(e) = function_compiler.compile(function) {
+            println!("{}:\n{}", function.name, self.ctx.func);
+            return Err(e);
+        }
         function_compiler.finalize();
 
         self.module.define_function(func_id, &mut self.ctx).unwrap();
@@ -285,18 +291,50 @@ impl<'a> FunctionCompiler<'a> {
             self.builder.inst_results(call);
             self.builder.ins().return_(&[]);
         } else {
-            for statement in &function.body.statements {
-                self.lower_statement(statement)?;
-            }
+            // Process all statements except the last one
+            let statements = &function.body.statements;
+            if statements.is_empty() {
+                // Empty function body
+                if self.builder.func.signature.returns.is_empty() {
+                    self.builder.ins().return_(&[]);
+                } else {
+                    bail!("Non-void function must return a value");
+                }
+            } else {
+                // Process all statements except possibly the last
+                for statement in &statements[..statements.len() - 1] {
+                    self.lower_statement(statement)?;
+                }
 
-            // If this is a void function and it doesn't end with a return, add one
-            if self.builder.func.signature.returns.is_empty() {
-                self.builder.ins().return_(&[]);
+                // Handle the last statement
+                let last_stmt = statements.last().unwrap();
+                match last_stmt {
+                    ast::Statement::Return { .. } => {
+                        // Explicit return, just lower it
+                        self.lower_statement(last_stmt)?;
+                    }
+                    ast::Statement::Expr(expr) if !self.builder.func.signature.returns.is_empty() => {
+                        // Last expression in a non-void function becomes the return value
+                        let ret_val = self.eval_expr(expr)?.expect("Non-void function must return a value");
+                        self.builder.ins().return_(&[ret_val]);
+                    }
+                    _ => {
+                        // Any other statement
+                        self.lower_statement(last_stmt)?;
+                        // Add implicit return for void functions
+                        if self.builder.func.signature.returns.is_empty() {
+                            self.builder.ins().return_(&[]);
+                        }
+                    }
+                }
             }
         }
 
         if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
-            panic!("verifier error: {} {err}", function.name);
+            bail!(
+                "Function '{}' failed verification with error\n{err}\n{err:#?}",
+                function.name
+            );
         }
 
         Ok(())
@@ -376,8 +414,16 @@ impl<'a> FunctionCompiler<'a> {
                     ast::BinaryOp::Div => todo!(),
                     ast::BinaryOp::Mod => todo!(),
                     ast::BinaryOp::Exp => todo!(),
-                    ast::BinaryOp::Eq => todo!(),
-                    ast::BinaryOp::Ne => todo!(),
+                    ast::BinaryOp::Eq => Ok(Some(self.builder.ins().icmp(
+                        IntCC::Equal,
+                        left_expr,
+                        right_expr,
+                    ))),
+                    ast::BinaryOp::Ne => Ok(Some(self.builder.ins().icmp(
+                        IntCC::NotEqual,
+                        left_expr,
+                        right_expr,
+                    ))),
                     ast::BinaryOp::Lt => todo!(),
                     ast::BinaryOp::Gt => todo!(),
                     ast::BinaryOp::LtEq => todo!(),
@@ -390,6 +436,66 @@ impl<'a> FunctionCompiler<'a> {
             ast::Expr::Call { call, .. } => self.eval_call(call),
             ast::Expr::StructInstance { .. } => todo!(),
             ast::Expr::Member { .. } => todo!(),
+            ast::Expr::If {
+                ty,
+                cond,
+                then,
+                else_if_blocks,
+                else_block: els,
+            } => {
+                let cond_value = self.eval_expr(cond)?.unwrap();
+                let then_block = self.builder.create_block();
+                let else_block = self.builder.create_block();
+                let merge_block = self.builder.create_block();
+
+                self.builder.append_block_param(
+                    merge_block,
+                    type_from_ast(ty, self.module).unwrap().unwrap(),
+                );
+
+                self.builder
+                    .ins()
+                    .brif(cond_value, then_block, &[], else_block, &[]);
+
+                self.builder.switch_to_block(then_block);
+                self.builder.seal_block(then_block);
+                for statement in &then.statements[..then.statements.len() - 1] {
+                    self.lower_statement(statement)?;
+                }
+                let last_in_then = then.statements.last().unwrap();
+                let then_return = if let ast::Statement::Expr(expr) = last_in_then {
+                    self.eval_expr(expr)
+                } else {
+                    todo!()
+                };
+                self.builder.ins().jump(
+                    merge_block,
+                    &[BlockArg::Value(then_return.unwrap().unwrap())],
+                );
+
+                let els = els.as_ref().unwrap();
+                self.builder.switch_to_block(else_block);
+                self.builder.seal_block(else_block);
+                for statement in &els.statements[..els.statements.len() - 1] {
+                    self.lower_statement(statement)?;
+                }
+                let last_in_else = els.statements.last().unwrap();
+                let else_return = if let ast::Statement::Expr(expr) = last_in_else {
+                    self.eval_expr(expr)
+                } else {
+                    todo!()
+                };
+                self.builder.ins().jump(
+                    merge_block,
+                    &[BlockArg::Value(else_return.unwrap().unwrap())],
+                );
+
+                self.builder.switch_to_block(merge_block);
+                self.builder.seal_block(merge_block);
+                let phi = self.builder.block_params(merge_block)[0];
+
+                Ok(Some(phi))
+            }
         }
     }
 

@@ -76,6 +76,7 @@ pub struct Call<'src> {
     pub args: Vec<Expr<'src>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Expr<'src> {
     IntLiteral(i64),
@@ -114,6 +115,13 @@ pub enum Expr<'src> {
         field: Ident<'src>,
         ty: TypeKind<'src>,
     },
+    If {
+        ty: TypeKind<'src>,
+        cond: Box<Expr<'src>>,
+        then: Block<'src>,
+        else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
+        else_block: Option<Block<'src>>,
+    },
 }
 
 impl<'src> Expr<'src> {
@@ -130,6 +138,7 @@ impl<'src> Expr<'src> {
             Expr::Call { ty, .. } => ty,
             Expr::StructInstance { .. } => todo!(),
             Expr::Member { ty, .. } => ty,
+            Expr::If { ty, .. } => ty,
         }
     }
 }

@@ -254,6 +254,7 @@ impl<'src> Typechecker<'src> {
             .last()
             .map(|stmt| match stmt {
                 typecheck_ast::Statement::Return { ty, .. } => *ty,
+                typecheck_ast::Statement::Expr(e) => *e.ty(),
                 _ => typecheck_ast::TypeKind::Void,
             })
             .unwrap_or(typecheck_ast::TypeKind::Void);
@@ -406,9 +407,21 @@ impl<'src> Typechecker<'src> {
                             format!("This is {} '{}'", right_a_or_an, right_ty),
                         ));
                 }
+                let mut ty = *left_expr.ty();
+                if matches!(
+                    op,
+                    parser_ast::BinaryOp::Eq
+                        | parser_ast::BinaryOp::Ne
+                        | parser_ast::BinaryOp::Lt
+                        | parser_ast::BinaryOp::LtEq
+                        | parser_ast::BinaryOp::Gt
+                        | parser_ast::BinaryOp::GtEq
+                ) {
+                    ty = typecheck_ast::TypeKind::Bool;
+                }
                 Ok(typecheck_ast::Expr::Binary {
                     op: (*op).into(),
-                    ty: *left_expr.ty(),
+                    ty,
                     left: Box::new(left_expr),
                     right: Box::new(right_expr),
                 })
@@ -469,7 +482,39 @@ impl<'src> Typechecker<'src> {
             },
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),
-            parser_ast::ExprKind::If { .. } => todo!(),
+            parser_ast::ExprKind::If {
+                cond,
+                then,
+                else_if_blocks,
+                else_block,
+            } => {
+                let t_cond = self.visit_expr(cond)?;
+                if *t_cond.ty() != typecheck_ast::TypeKind::Bool {
+                    return Err(Diagnostic::error(
+                        cond.span,
+                        "Only boolean expressions allowed in if checks",
+                    )
+                    .with_error_label(cond.span, "here"));
+                }
+                let t_then = self.visit_block(then)?;
+                let mut t_else_if_blocks = Vec::with_capacity(else_if_blocks.len());
+                for (cond, block) in else_if_blocks {
+                    t_else_if_blocks.push((self.visit_expr(cond)?, self.visit_block(block)?));
+                }
+                let t_else_block = if let Some(else_block) = else_block {
+                    Some(self.visit_block(else_block)?)
+                } else {
+                    None
+                };
+                // TODO: check that all blocks either "yield" the right type or return the right type in the function
+                Ok(typecheck_ast::Expr::If {
+                    ty: t_then.ty,
+                    cond: Box::new(t_cond),
+                    then: t_then,
+                    else_if_blocks: t_else_if_blocks,
+                    else_block: t_else_block,
+                })
+            }
         }
     }
 

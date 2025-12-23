@@ -1,11 +1,17 @@
 use std::path::Path;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span<'src> {
     start: usize,
     end: usize,
     file: &'src Path,
     source: &'src str,
+}
+
+impl std::fmt::Debug for Span<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.start, self.end)
+    }
 }
 
 impl<'src> Span<'src> {
