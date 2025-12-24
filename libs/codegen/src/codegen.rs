@@ -313,9 +313,13 @@ impl<'a> FunctionCompiler<'a> {
                         // Explicit return, just lower it
                         self.lower_statement(last_stmt)?;
                     }
-                    ast::Statement::Expr(expr) if !self.builder.func.signature.returns.is_empty() => {
+                    ast::Statement::Expr(expr)
+                        if !self.builder.func.signature.returns.is_empty() =>
+                    {
                         // Last expression in a non-void function becomes the return value
-                        let ret_val = self.eval_expr(expr)?.expect("Non-void function must return a value");
+                        let ret_val = self
+                            .eval_expr(expr)?
+                            .expect("Non-void function must return a value");
                         self.builder.ins().return_(&[ret_val]);
                     }
                     _ => {
@@ -582,6 +586,9 @@ impl<'a> FunctionCompiler<'a> {
                 self.variables.insert(name.inner.to_string(), var);
                 Ok(())
             }
+            ast::Statement::Assign { name, expr, span } => {
+                todo!()
+            }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {
                     self.builder.ins().return_(&[]);
@@ -595,6 +602,38 @@ impl<'a> FunctionCompiler<'a> {
                     Ok(())
                 }
             },
+            ast::Statement::ForLoop { span, cond, block } => {
+                let header_block = self.builder.create_block();
+                let body_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+
+                self.builder.ins().jump(header_block, &[]);
+                self.builder.switch_to_block(header_block);
+
+                let condition_value = self.eval_expr(cond)?.unwrap();
+                self.builder
+                    .ins()
+                    .brif(condition_value, body_block, &[], exit_block, &[]);
+
+                self.builder.switch_to_block(body_block);
+                self.builder.seal_block(body_block);
+
+                for stmt in &block.statements {
+                    self.lower_statement(stmt)?;
+                }
+                self.builder.ins().jump(header_block, &[]);
+
+                self.builder.switch_to_block(exit_block);
+
+                // We've reached the bottom of the loop, so there will be no
+                // more backedges to the header to exits to the bottom.
+                self.builder.seal_block(header_block);
+                self.builder.seal_block(exit_block);
+
+                // Just return 0 for now.
+                // self.builder.ins().iconst(self.int, 0);
+                Ok(())
+            }
             ast::Statement::Function(_) => todo!(),
             ast::Statement::Struct(_) => todo!(),
             ast::Statement::Enum(_) => todo!(),
