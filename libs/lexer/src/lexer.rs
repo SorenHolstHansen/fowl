@@ -52,17 +52,9 @@ impl<'src> Lexer<'src> {
     }
 
     pub fn peek_more(&mut self) -> Option<&Result<Token<'src>, LexerError<'src>>> {
-        dbg!(&self.peek_queue);
         let next = self.next_internal(false);
-        dbg!(&self.peek_queue);
-        dbg!(&next);
-        let next = self.next_internal(false);
-        dbg!(&self.peek_queue);
-        dbg!(&next);
         self.peek_queue.push_back(next);
-        dbg!(&self.peek_queue);
 
-        panic!();
         self.peek_queue.back()
     }
 

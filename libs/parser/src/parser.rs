@@ -545,6 +545,7 @@ impl<'src> Parser<'src> {
                 let lbrace = self.expect_token(TokenKind::LBrace)?;
                 let stmts = self.parse_statements()?;
                 let rbrace = self.expect_token(TokenKind::RBrace)?;
+                self.eat_if_token(TokenKind::Semicolon);
 
                 Ok(Statement::ForLoop {
                     span: span.merge(rbrace.span),
@@ -622,16 +623,12 @@ impl<'src> Parser<'src> {
                 }))
             }
             TokenKind::Ident(ident) => {
-                println!("HERE");
-                dbg!(&self.lexer);
                 let more = self.lexer.peek_more();
-                dbg!(&more);
                 if let Some(Ok(Token {
                     kind: TokenKind::Eq,
                     ..
                 })) = more
                 {
-                    println!("IN HERE");
                     // This is an assignment
 
                     // Skip the peeked ident
@@ -639,6 +636,7 @@ impl<'src> Parser<'src> {
                     // Skip the peeked '='
                     let _ = self.lexer.next().unwrap();
                     let expr = self.parse_expression(0)?;
+                    self.expect_token(TokenKind::Semicolon)?;
 
                     return Ok(Statement::Assign {
                         name: Ident {

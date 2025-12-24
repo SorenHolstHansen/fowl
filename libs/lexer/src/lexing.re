@@ -128,11 +128,11 @@ impl<'src> Lexer<'src> {
         <INIT> "."                     { return self.token(TokenKind::Dot) }
 
         // Line comments
-        <INIT> "//"[^\x00\n]*          { return self.next() }
+        <INIT> "//"[^\x00\n]*          { return self.next_internal(use_peek_queue) }
 
         // Whitespace
-        <INIT> [ \t\v\f]+              { return self.next() }
-        <INIT> "\n"                    { return self.next() }
+        <INIT> [ \t\v\f]+              { return self.next_internal(use_peek_queue) }
+        <INIT> "\n"                    { return self.next_internal(use_peek_queue) }
 
         // EOF
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
