@@ -6,7 +6,9 @@ use cranelift_codegen::{
 };
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
-use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
+use std::{
+    any::Any, collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc,
+};
 use target_lexicon::Triple;
 use typecheck::ast::{self, Program, TypeKind};
 
@@ -313,9 +315,13 @@ impl<'a> FunctionCompiler<'a> {
                         // Explicit return, just lower it
                         self.lower_statement(last_stmt)?;
                     }
-                    ast::Statement::Expr(expr) if !self.builder.func.signature.returns.is_empty() => {
+                    ast::Statement::Expr(expr)
+                        if !self.builder.func.signature.returns.is_empty() =>
+                    {
                         // Last expression in a non-void function becomes the return value
-                        let ret_val = self.eval_expr(expr)?.expect("Non-void function must return a value");
+                        let ret_val = self
+                            .eval_expr(expr)?
+                            .expect("Non-void function must return a value");
                         self.builder.ins().return_(&[ret_val]);
                     }
                     _ => {
@@ -412,7 +418,7 @@ impl<'a> FunctionCompiler<'a> {
                     ast::BinaryOp::Sub => Ok(Some(self.builder.ins().isub(left_expr, right_expr))),
                     ast::BinaryOp::Mul => todo!(),
                     ast::BinaryOp::Div => todo!(),
-                    ast::BinaryOp::Mod => todo!(),
+                    ast::BinaryOp::Mod => Ok(Some(self.builder.ins().urem(left_expr, right_expr))),
                     ast::BinaryOp::Exp => todo!(),
                     ast::BinaryOp::Eq => Ok(Some(self.builder.ins().icmp(
                         IntCC::Equal,
@@ -424,12 +430,16 @@ impl<'a> FunctionCompiler<'a> {
                         left_expr,
                         right_expr,
                     ))),
-                    ast::BinaryOp::Lt => todo!(),
+                    ast::BinaryOp::Lt => Ok(Some(self.builder.ins().icmp(
+                        IntCC::SignedLessThan,
+                        left_expr,
+                        right_expr,
+                    ))),
                     ast::BinaryOp::Gt => todo!(),
                     ast::BinaryOp::LtEq => todo!(),
                     ast::BinaryOp::GtEq => todo!(),
                     ast::BinaryOp::And => todo!(),
-                    ast::BinaryOp::Or => todo!(),
+                    ast::BinaryOp::Or => Ok(Some(self.builder.ins().bor(left_expr, right_expr))),
                 }
             }
             ast::Expr::Unary { .. } => todo!(),
@@ -448,10 +458,13 @@ impl<'a> FunctionCompiler<'a> {
                 let else_block = self.builder.create_block();
                 let merge_block = self.builder.create_block();
 
-                self.builder.append_block_param(
-                    merge_block,
-                    type_from_ast(ty, self.module).unwrap().unwrap(),
-                );
+                let return_type = type_from_ast(ty, self.module)?;
+                let has_return_value = return_type.is_some();
+
+                if has_return_value {
+                    self.builder
+                        .append_block_param(merge_block, return_type.unwrap());
+                }
 
                 self.builder
                     .ins()
@@ -462,39 +475,63 @@ impl<'a> FunctionCompiler<'a> {
                 for statement in &then.statements[..then.statements.len() - 1] {
                     self.lower_statement(statement)?;
                 }
-                let last_in_then = then.statements.last().unwrap();
-                let then_return = if let ast::Statement::Expr(expr) = last_in_then {
-                    self.eval_expr(expr)
-                } else {
-                    todo!()
-                };
-                self.builder.ins().jump(
-                    merge_block,
-                    &[BlockArg::Value(then_return.unwrap().unwrap())],
-                );
 
-                let els = els.as_ref().unwrap();
+                if let Some(last_in_then) = then.statements.last() {
+                    if has_return_value {
+                        let then_return = if let ast::Statement::Expr(expr) = last_in_then {
+                            self.eval_expr(expr)?
+                        } else {
+                            None
+                        };
+                        self.builder
+                            .ins()
+                            .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
+                    } else {
+                        self.lower_statement(last_in_then)?;
+                        self.builder.ins().jump(merge_block, &[]);
+                    }
+                } else {
+                    self.builder.ins().jump(merge_block, &[]);
+                }
+
                 self.builder.switch_to_block(else_block);
                 self.builder.seal_block(else_block);
-                for statement in &els.statements[..els.statements.len() - 1] {
-                    self.lower_statement(statement)?;
-                }
-                let last_in_else = els.statements.last().unwrap();
-                let else_return = if let ast::Statement::Expr(expr) = last_in_else {
-                    self.eval_expr(expr)
+
+                if let Some(els) = els {
+                    for statement in &els.statements[..els.statements.len() - 1] {
+                        self.lower_statement(statement)?;
+                    }
+
+                    if let Some(last_in_else) = els.statements.last() {
+                        if has_return_value {
+                            let else_return = if let ast::Statement::Expr(expr) = last_in_else {
+                                self.eval_expr(expr)?
+                            } else {
+                                None
+                            };
+                            self.builder
+                                .ins()
+                                .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
+                        } else {
+                            self.lower_statement(last_in_else)?;
+                            self.builder.ins().jump(merge_block, &[]);
+                        }
+                    } else {
+                        self.builder.ins().jump(merge_block, &[]);
+                    }
                 } else {
-                    todo!()
-                };
-                self.builder.ins().jump(
-                    merge_block,
-                    &[BlockArg::Value(else_return.unwrap().unwrap())],
-                );
+                    self.builder.ins().jump(merge_block, &[]);
+                }
 
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
-                let phi = self.builder.block_params(merge_block)[0];
 
-                Ok(Some(phi))
+                if has_return_value {
+                    let phi = self.builder.block_params(merge_block)[0];
+                    Ok(Some(phi))
+                } else {
+                    Ok(None)
+                }
             }
         }
     }
@@ -582,6 +619,26 @@ impl<'a> FunctionCompiler<'a> {
                 self.variables.insert(name.inner.to_string(), var);
                 Ok(())
             }
+            ast::Statement::Assign {
+                name,
+                expr,
+                span: _,
+            } => {
+                // Evaluate the expression first to get the new value
+                let value = self
+                    .eval_expr(expr)?
+                    .ok_or_else(|| anyhow::anyhow!("Assignment expression must return a value"))?;
+
+                // Get the variable that we're assigning to
+                let var = self
+                    .variables
+                    .get(name.inner)
+                    .ok_or_else(|| anyhow::anyhow!("Variable '{}' not found", name.inner))?;
+
+                // Update the variable
+                self.builder.def_var(*var, value);
+                Ok(())
+            }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {
                     self.builder.ins().return_(&[]);
@@ -595,6 +652,38 @@ impl<'a> FunctionCompiler<'a> {
                     Ok(())
                 }
             },
+            ast::Statement::ForLoop { span, cond, block } => {
+                let header_block = self.builder.create_block();
+                let body_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+
+                self.builder.ins().jump(header_block, &[]);
+                self.builder.switch_to_block(header_block);
+
+                let condition_value = self.eval_expr(cond)?.unwrap();
+                self.builder
+                    .ins()
+                    .brif(condition_value, body_block, &[], exit_block, &[]);
+
+                self.builder.switch_to_block(body_block);
+                self.builder.seal_block(body_block);
+
+                for stmt in &block.statements {
+                    self.lower_statement(stmt)?;
+                }
+                self.builder.ins().jump(header_block, &[]);
+
+                self.builder.switch_to_block(exit_block);
+
+                // We've reached the bottom of the loop, so there will be no
+                // more backedges to the header to exits to the bottom.
+                self.builder.seal_block(header_block);
+                self.builder.seal_block(exit_block);
+
+                // Just return 0 for now.
+                // self.builder.ins().iconst(self.int, 0);
+                Ok(())
+            }
             ast::Statement::Function(_) => todo!(),
             ast::Statement::Struct(_) => todo!(),
             ast::Statement::Enum(_) => todo!(),

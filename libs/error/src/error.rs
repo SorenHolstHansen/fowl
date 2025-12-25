@@ -21,7 +21,7 @@ impl DiagnosticSeverity {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Element<'src> {
     Label {
         message: Cow<'static, str>,
@@ -32,7 +32,7 @@ enum Element<'src> {
     Help(Cow<'static, str>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Diagnostic<'src> {
     severity: DiagnosticSeverity,
     span: Span<'src>,
