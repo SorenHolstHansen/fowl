@@ -9,7 +9,7 @@ pub fn analyzer<'src>(
     files: HashMap<String, parser_ast::Program<'src>>,
     package_name: &str,
 ) -> (analyzer_ast::Program<'src>, Vec<Diagnostic<'src>>) {
-    let mut analyzerer = Typechecker {
+    let mut analyzer = Analyzer {
         parsed_files: files.clone(),
         analyzered_declarations: TypecheckedDeclarations::new(),
         errors: Vec::new(),
@@ -21,9 +21,9 @@ pub fn analyzer<'src>(
         context_name_mapping: ContextNameMapping(HashMap::new()),
     };
 
-    analyzerer.analyzer(&format!("{}.main", package_name));
+    analyzer.analyzer(&format!("{}.main", package_name));
 
-    (analyzerer.program, analyzerer.errors)
+    (analyzer.program, analyzer.errors)
 }
 
 struct TypecheckedDeclarations<'src>(
@@ -81,7 +81,7 @@ impl ContextNameMapping {
     }
 }
 
-struct Typechecker<'src> {
+struct Analyzer<'src> {
     parsed_files: HashMap<String, parser_ast::Program<'src>>,
     analyzered_declarations: TypecheckedDeclarations<'src>,
     // Complete program after analyzering
@@ -92,7 +92,7 @@ struct Typechecker<'src> {
     context_name_mapping: ContextNameMapping,
 }
 
-impl<'src> Typechecker<'src> {
+impl<'src> Analyzer<'src> {
     fn analyzer(&mut self, module: &str) {
         let previous_module_name = self.current_module_name.clone();
         self.current_module_name = module.to_string();
