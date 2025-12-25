@@ -6,7 +6,9 @@ use cranelift_codegen::{
 };
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
-use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
+use std::{
+    any::Any, collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc,
+};
 use target_lexicon::Triple;
 use typecheck::ast::{self, Program, TypeKind};
 
@@ -416,7 +418,7 @@ impl<'a> FunctionCompiler<'a> {
                     ast::BinaryOp::Sub => Ok(Some(self.builder.ins().isub(left_expr, right_expr))),
                     ast::BinaryOp::Mul => todo!(),
                     ast::BinaryOp::Div => todo!(),
-                    ast::BinaryOp::Mod => todo!(),
+                    ast::BinaryOp::Mod => Ok(Some(self.builder.ins().urem(left_expr, right_expr))),
                     ast::BinaryOp::Exp => todo!(),
                     ast::BinaryOp::Eq => Ok(Some(self.builder.ins().icmp(
                         IntCC::Equal,
@@ -428,12 +430,16 @@ impl<'a> FunctionCompiler<'a> {
                         left_expr,
                         right_expr,
                     ))),
-                    ast::BinaryOp::Lt => todo!(),
+                    ast::BinaryOp::Lt => Ok(Some(self.builder.ins().icmp(
+                        IntCC::SignedLessThan,
+                        left_expr,
+                        right_expr,
+                    ))),
                     ast::BinaryOp::Gt => todo!(),
                     ast::BinaryOp::LtEq => todo!(),
                     ast::BinaryOp::GtEq => todo!(),
                     ast::BinaryOp::And => todo!(),
-                    ast::BinaryOp::Or => todo!(),
+                    ast::BinaryOp::Or => Ok(Some(self.builder.ins().bor(left_expr, right_expr))),
                 }
             }
             ast::Expr::Unary { .. } => todo!(),
