@@ -458,8 +458,13 @@ impl<'a> FunctionCompiler<'a> {
                 let else_block = self.builder.create_block();
                 let merge_block = self.builder.create_block();
 
-                self.builder
-                    .append_block_param(merge_block, type_from_ast(ty, self.module)?.unwrap());
+                let return_type = type_from_ast(ty, self.module)?;
+                let has_return_value = return_type.is_some();
+
+                if has_return_value {
+                    self.builder
+                        .append_block_param(merge_block, return_type.unwrap());
+                }
 
                 self.builder
                     .ins()
@@ -470,37 +475,63 @@ impl<'a> FunctionCompiler<'a> {
                 for statement in &then.statements[..then.statements.len() - 1] {
                     self.lower_statement(statement)?;
                 }
-                let last_in_then = then.statements.last().unwrap();
-                let then_return = if let ast::Statement::Expr(expr) = last_in_then {
-                    self.eval_expr(expr)?
-                } else {
-                    todo!()
-                };
-                self.builder
-                    .ins()
-                    .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
 
-                let els = els.as_ref().unwrap();
+                if let Some(last_in_then) = then.statements.last() {
+                    if has_return_value {
+                        let then_return = if let ast::Statement::Expr(expr) = last_in_then {
+                            self.eval_expr(expr)?
+                        } else {
+                            None
+                        };
+                        self.builder
+                            .ins()
+                            .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
+                    } else {
+                        self.lower_statement(last_in_then)?;
+                        self.builder.ins().jump(merge_block, &[]);
+                    }
+                } else {
+                    self.builder.ins().jump(merge_block, &[]);
+                }
+
                 self.builder.switch_to_block(else_block);
                 self.builder.seal_block(else_block);
-                for statement in &els.statements[..els.statements.len() - 1] {
-                    self.lower_statement(statement)?;
-                }
-                let last_in_else = els.statements.last().unwrap();
-                let else_return = if let ast::Statement::Expr(expr) = last_in_else {
-                    self.eval_expr(expr)?
+
+                if let Some(els) = els {
+                    for statement in &els.statements[..els.statements.len() - 1] {
+                        self.lower_statement(statement)?;
+                    }
+
+                    if let Some(last_in_else) = els.statements.last() {
+                        if has_return_value {
+                            let else_return = if let ast::Statement::Expr(expr) = last_in_else {
+                                self.eval_expr(expr)?
+                            } else {
+                                None
+                            };
+                            self.builder
+                                .ins()
+                                .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
+                        } else {
+                            self.lower_statement(last_in_else)?;
+                            self.builder.ins().jump(merge_block, &[]);
+                        }
+                    } else {
+                        self.builder.ins().jump(merge_block, &[]);
+                    }
                 } else {
-                    todo!()
-                };
-                self.builder
-                    .ins()
-                    .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
+                    self.builder.ins().jump(merge_block, &[]);
+                }
 
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
-                let phi = self.builder.block_params(merge_block)[0];
 
-                Ok(Some(phi))
+                if has_return_value {
+                    let phi = self.builder.block_params(merge_block)[0];
+                    Ok(Some(phi))
+                } else {
+                    Ok(None)
+                }
             }
         }
     }
@@ -588,8 +619,25 @@ impl<'a> FunctionCompiler<'a> {
                 self.variables.insert(name.inner.to_string(), var);
                 Ok(())
             }
-            ast::Statement::Assign { name, expr, span } => {
-                todo!()
+            ast::Statement::Assign {
+                name,
+                expr,
+                span: _,
+            } => {
+                // Evaluate the expression first to get the new value
+                let value = self
+                    .eval_expr(expr)?
+                    .ok_or_else(|| anyhow::anyhow!("Assignment expression must return a value"))?;
+
+                // Get the variable that we're assigning to
+                let var = self
+                    .variables
+                    .get(name.inner)
+                    .ok_or_else(|| anyhow::anyhow!("Variable '{}' not found", name.inner))?;
+
+                // Update the variable
+                self.builder.def_var(*var, value);
+                Ok(())
             }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {

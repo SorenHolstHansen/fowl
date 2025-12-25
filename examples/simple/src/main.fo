@@ -2,7 +2,7 @@ use simple.utils.add
 use std.io.println
 
 fn main() void {
-	let n = 10
+	let n = 1000
 	let mut sum = 0
 	let mut i = 1
 
