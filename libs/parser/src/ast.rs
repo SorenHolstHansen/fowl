@@ -277,26 +277,37 @@ pub enum Statement<'src> {
         mutable: bool,
         span: Span<'src>,
     },
+    Assign {
+        name: Ident<'src>,
+        expr: Expr<'src>,
+        span: Span<'src>,
+    },
     Return {
         span: Span<'src>,
         expr: Option<Expr<'src>>,
     },
     Function(Function<'src>),
-    // Type definitions
     Struct(Struct<'src>),
     Enum(Enum<'src>),
     Expr(Expr<'src>),
+    ForLoop {
+        span: Span<'src>,
+        cond: Expr<'src>,
+        block: Block<'src>,
+    },
 }
 
 impl<'src> Statement<'src> {
     pub fn span(&self) -> &Span<'src> {
         match self {
             Statement::Let { span, .. } => span,
+            Statement::Assign { span, .. } => span,
             Statement::Return { span, .. } => span,
             Statement::Function(function) => &function.span,
             Statement::Struct(strct) => &strct.span,
             Statement::Enum(e) => &e.span,
             Statement::Expr(expr) => &expr.span,
+            Statement::ForLoop { span, .. } => span,
         }
     }
 }

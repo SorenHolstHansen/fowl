@@ -291,6 +291,35 @@ impl<'src> Typechecker<'src> {
                     span: *span,
                 })
             }
+            parser_ast::Statement::Assign { name, expr, span } => {
+                let expr = self.visit_expr(expr)?;
+                // TODO: check that type of the name and expr.ty match
+                let name: analyzer_ast::Ident<'src> = (*name).into();
+                let ty = *expr.ty();
+                let Some(expected_ty) = self.variables.get(name.inner) else {
+                    return Err(Diagnostic::error(
+                        *span,
+                        format!("A variable with the name '{}' does not exist", name.inner),
+                    )
+                    .with_error_label(*span, "here"));
+                };
+                if expected_ty != &ty {
+                    return Err(
+                        Diagnostic::error(*span, "Mismatched types").with_error_label(
+                            name.span,
+                            format!(
+                                "This variable has type '{}', but is being assigned a(n) '{}'",
+                                expected_ty, ty
+                            ),
+                        ),
+                    );
+                }
+                Ok(analyzer_ast::Statement::Assign {
+                    name,
+                    expr,
+                    span: *span,
+                })
+            }
             parser_ast::Statement::Return { span, expr } => match expr {
                 None => Ok(analyzer_ast::Statement::Return {
                     span: *span,
@@ -306,6 +335,20 @@ impl<'src> Typechecker<'src> {
                     })
                 }
             },
+            parser_ast::Statement::ForLoop { span, cond, block } => {
+                let cond = self.visit_expr(cond)?;
+                if *cond.ty() != analyzer_ast::TypeKind::Bool {
+                    return Err(
+                        Diagnostic::error(*span, "Expected the condition to be a boolean")
+                            .with_error_label(*span, "here"),
+                    );
+                }
+                Ok(analyzer_ast::Statement::ForLoop {
+                    span: *span,
+                    cond,
+                    block: self.visit_block(block)?,
+                })
+            }
             parser_ast::Statement::Function(_) => todo!(),
             parser_ast::Statement::Struct(_) => todo!(),
             parser_ast::Statement::Enum(_) => todo!(),

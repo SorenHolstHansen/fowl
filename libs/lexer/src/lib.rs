@@ -6,6 +6,8 @@ pub mod lexer_error;
 mod lexing;
 pub use lexer::Lexer;
 
+use crate::lexer_error::{LexerError, LexerErrorKind};
+
 impl<'src> Lexer<'src> {
     pub fn pretty_string(self) -> String {
         let mut buf = String::new();
@@ -14,9 +16,17 @@ impl<'src> Lexer<'src> {
     }
 }
 
-fn pretty_print_tokens<'src>(lexer: Lexer<'src>, buf: &mut String) {
+fn pretty_print_tokens<'src>(mut lexer: Lexer<'src>, buf: &mut String) {
     let mut indent = 0;
-    for token in lexer {
+    loop {
+        let token = lexer.next();
+        if let Err(LexerError {
+            kind: LexerErrorKind::EofReached,
+            ..
+        }) = token
+        {
+            break;
+        }
         match token {
             Ok(t) => {
                 if let TokenKind::StringInterpolationStart = t.kind {

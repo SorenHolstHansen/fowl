@@ -23,26 +23,65 @@ struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    fn next_token(&mut self) -> Option<Token<'src>> {
+    fn next_token(&mut self) -> Token<'src> {
         match self.lexer.next() {
-            Some(Ok(t)) => Some(t),
-            Some(Err(e)) => {
+            Ok(t) => t,
+            Err(e) if e.is_eof() => panic!("Eof should have been handled by now"),
+            Err(e) => {
                 self.errors.push((&e).into());
                 self.next_token()
             }
-            None => None,
         }
     }
 
-    fn peek_token(&mut self) -> Option<&Token<'src>> {
-        while let Some(Err(e)) = self.lexer.peek() {
+    fn peek_token(&mut self) -> &Token<'src> {
+        while let Err(e) = self.lexer.peek() {
             self.errors.push(e.into());
             self.next_token();
         }
         match self.lexer.peek() {
-            Some(Ok(t)) => Some(t),
-            None => None,
+            Ok(t) => t,
             _ => unreachable!(),
+        }
+    }
+
+    fn eat_if_token(&mut self, token: TokenKind<'src>) {
+        let peeked = self.peek_token();
+        if peeked.kind == token {
+            self.next_token();
+        }
+    }
+
+    fn expect_token(&mut self, token: TokenKind<'src>) -> Result<Token<'src>, Diagnostic<'src>> {
+        match self.next_token() {
+            t if token == t.kind => Ok(t),
+            t => Err(Diagnostic::error(
+                t.span,
+                format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
+            )
+            .with_error_label(t.span, "here")),
+        }
+    }
+
+    fn expect_one_of_token(
+        &mut self,
+        tokens: &[TokenKind<'src>],
+    ) -> Result<Token<'src>, Diagnostic<'src>> {
+        match self.next_token() {
+            t if tokens.contains(&t.kind) => Ok(t),
+            t => Err(Diagnostic::error(
+                t.span,
+                format!(
+                    "Syntax error: Expected one of {}, found '{}'",
+                    tokens
+                        .iter()
+                        .map(|t| format!("'{}'", t))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    t.kind
+                ),
+            )
+            .with_error_label(t.span, "here")),
         }
     }
 
@@ -50,11 +89,11 @@ impl<'src> Parser<'src> {
         let mut declarations = Vec::new();
 
         loop {
+            let peeked = self.peek_token();
             if matches!(
-                self.peek_token().map(|t| t.kind),
-                None | Some(TokenKind::RBrace | TokenKind::RParen | TokenKind::Eof)
+                peeked.kind,
+                TokenKind::RBrace | TokenKind::RParen | TokenKind::Eof
             ) {
-                self.next_token();
                 break;
             };
             match self.parse_declaration() {
@@ -69,43 +108,8 @@ impl<'src> Parser<'src> {
         Program { declarations }
     }
 
-    fn expect_token(&mut self, token: TokenKind<'src>) -> Result<Token<'src>, Diagnostic<'src>> {
-        match self.next_token() {
-            Some(t) if token == t.kind => Ok(t),
-            Some(t) => Err(Diagnostic::error(
-                t.span,
-                format!("Syntax error: Expected '{}', found '{}'", token, t.kind),
-            )
-            .with_error_label(t.span, "here")),
-            None => todo!("Need an EOF span. Expected '{}'", token),
-        }
-    }
-
-    fn expect_one_of_token(
-        &mut self,
-        tokens: &[TokenKind<'src>],
-    ) -> Result<Token<'src>, Diagnostic<'src>> {
-        match self.next_token() {
-            Some(t) if tokens.contains(&t.kind) => Ok(t),
-            Some(t) => Err(Diagnostic::error(
-                t.span,
-                format!(
-                    "Syntax error: Expected one of {}, found '{}'",
-                    tokens
-                        .iter()
-                        .map(|t| format!("'{}'", t))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    t.kind
-                ),
-            )
-            .with_error_label(t.span, "here")),
-            None => todo!("Need an EOF span"),
-        }
-    }
-
     fn parse_type(&mut self) -> Result<Type<'src>, Diagnostic<'src>> {
-        match self.next_token().expect("Unexpected EOF") {
+        match self.next_token() {
             Token {
                 kind: TokenKind::Ident(i),
                 span,
@@ -156,35 +160,35 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn parse_vis(&mut self) -> Vis {
+    fn parse_vis(&mut self) -> Result<Vis, Diagnostic<'src>> {
         match self.peek_token() {
-            Some(Token {
+            Token {
                 kind: TokenKind::Public,
                 ..
-            }) => {
-                self.lexer.next();
-                Vis::Public
+            } => {
+                self.next_token();
+                Ok(Vis::Public)
             }
-            Some(Token {
+            Token {
                 kind: TokenKind::Internal,
                 ..
-            }) => {
-                self.lexer.next();
-                Vis::Internal
+            } => {
+                self.next_token();
+                Ok(Vis::Internal)
             }
-            Some(Token {
+            Token {
                 kind: TokenKind::Private,
                 ..
-            }) => {
-                self.lexer.next();
-                Vis::Private
+            } => {
+                self.next_token();
+                Ok(Vis::Private)
             }
-            _ => Vis::Private,
+            _ => Ok(Vis::Private),
         }
     }
 
     fn parse_ident(&mut self) -> Result<Ident<'src>, Diagnostic<'src>> {
-        match self.next_token().expect("Unexpected EOF") {
+        match self.next_token() {
             Token {
                 kind: TokenKind::Ident(name),
                 span,
@@ -200,9 +204,9 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration<'src>, Diagnostic<'src>> {
-        let vis = self.parse_vis();
+        let vis = self.parse_vis()?;
 
-        let t = self.peek_token().expect("Unexpected EOF");
+        let t = self.peek_token();
         let kind = t.kind;
         let span = t.span;
 
@@ -230,10 +234,10 @@ impl<'src> Parser<'src> {
                 loop {
                     if matches!(
                         self.peek_token(),
-                        Some(Token {
+                        Token {
                             kind: TokenKind::RBrace,
                             ..
-                        })
+                        }
                     ) {
                         // struct end
                         self.next_token();
@@ -250,20 +254,14 @@ impl<'src> Parser<'src> {
                     fields.push((param_name, ty));
 
                     self.expect_token(TokenKind::Semicolon)?;
-                    if let Some(Token {
+                    if let Token {
                         kind: TokenKind::RBrace,
                         span,
-                    }) = self.peek_token()
+                    } = self.peek_token()
                     {
                         struct_span = struct_span.merge(*span);
                         self.next_token();
-                        if let Some(Token {
-                            kind: TokenKind::Semicolon,
-                            ..
-                        }) = self.peek_token()
-                        {
-                            self.lexer.next();
-                        }
+                        self.eat_if_token(TokenKind::Semicolon);
                         break;
                     }
                 }
@@ -298,10 +296,10 @@ impl<'src> Parser<'src> {
                 loop {
                     if matches!(
                         self.peek_token(),
-                        Some(Token {
+                        Token {
                             kind: TokenKind::RBrace,
                             ..
-                        })
+                        }
                     ) {
                         // enum end
                         self.next_token();
@@ -320,21 +318,15 @@ impl<'src> Parser<'src> {
                         fields: Vec::new(),
                     });
 
-                    if let Some(Token {
+                    if let Token {
                         kind: TokenKind::RBrace,
                         span,
-                    }) = self.peek_token()
+                    } = self.peek_token()
                     {
                         enum_span = enum_span.merge(*span);
                         // Eat '}'
                         self.next_token();
-                        if let Some(Token {
-                            kind: TokenKind::Semicolon,
-                            ..
-                        }) = self.peek_token()
-                        {
-                            self.lexer.next();
-                        }
+                        self.eat_if_token(TokenKind::Semicolon);
                         self.next_token();
                         break;
                     }
@@ -358,24 +350,23 @@ impl<'src> Parser<'src> {
                 // repeatedly parse `.submodule`
                 loop {
                     match self.peek_token() {
-                        None => todo!("Need an EOF"),
-                        Some(Token {
+                        Token {
                             kind: TokenKind::Semicolon,
                             ..
-                        }) => {
+                        } => {
                             self.next_token();
                             break;
                         }
-                        Some(Token {
+                        Token {
                             kind: TokenKind::Dot,
                             ..
-                        }) => {
+                        } => {
                             self.next_token();
                             let submodule = self.parse_ident()?;
                             import.push(submodule);
                             continue;
                         }
-                        Some(Token { kind: _, span }) => {
+                        Token { kind: _, span } => {
                             return Err(Diagnostic::error(*span, "Unexpected token")
                                 .with_error_label(*span, "here"));
                         }
@@ -397,7 +388,7 @@ impl<'src> Parser<'src> {
 
     fn parse_function(&mut self) -> Result<Function<'src>, Diagnostic<'src>> {
         // Skip the peeked "fn"
-        let t = self.next_token().unwrap();
+        let t = self.next_token();
         let mut function_span = t.span;
 
         let name = self.parse_ident().map_err(|e| {
@@ -420,13 +411,7 @@ impl<'src> Parser<'src> {
         let Token {
             span: rbrace_span, ..
         } = self.expect_token(TokenKind::RBrace)?;
-        if let Some(Token {
-            kind: TokenKind::Semicolon,
-            ..
-        }) = self.peek_token()
-        {
-            self.lexer.next();
-        }
+        self.eat_if_token(TokenKind::Semicolon);
         let block = Block {
             statements,
             span: lbrace_span.merge(rbrace_span),
@@ -449,10 +434,10 @@ impl<'src> Parser<'src> {
 
         if matches!(
             self.peek_token(),
-            Some(Token {
+            Token {
                 kind: TokenKind::RParen,
                 ..
-            })
+            }
         ) {
             // immediate parameter list end
             self.next_token();
@@ -491,10 +476,8 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_statement(&mut self) -> Result<Statement<'src>, Diagnostic<'src>> {
-        let Some(token) = self.peek_token() else {
-            todo!("Need an EOF span")
-        };
-        let statement_span = token.span;
+        let token = self.peek_token();
+        let token_span = token.span;
 
         match token.kind {
             TokenKind::Let => {
@@ -502,10 +485,10 @@ impl<'src> Parser<'src> {
                 self.next_token();
 
                 // Check if there is a mut
-                let mutable = if let Some(Token {
+                let mutable = if let Token {
                     kind: TokenKind::Mut,
                     ..
-                }) = self.peek_token()
+                } = self.peek_token()
                 {
                     self.next_token();
                     true
@@ -516,10 +499,10 @@ impl<'src> Parser<'src> {
                 let ident = self.parse_ident()?;
 
                 // Try and get type
-                let ty = if let Some(Token {
+                let ty = if let Token {
                     kind: TokenKind::Colon,
                     ..
-                }) = self.peek_token()
+                } = self.peek_token()
                 {
                     self.next_token();
                     let ty = self.parse_type()?;
@@ -535,7 +518,7 @@ impl<'src> Parser<'src> {
                 let Token { span, .. } = self.expect_token(TokenKind::Semicolon)?;
 
                 Ok(Statement::Let {
-                    span: statement_span.merge(span),
+                    span: token_span.merge(span),
                     name: ident,
                     mutable,
                     ty,
@@ -549,14 +532,29 @@ impl<'src> Parser<'src> {
                 let rhs = self.parse_expression(1)?;
                 let Token { span, .. } = self.expect_token(TokenKind::Semicolon)?;
                 Ok(Statement::Return {
-                    span: statement_span.merge(span),
+                    span: token_span.merge(span),
                     expr: Some(rhs),
                 })
             }
-            TokenKind::Ident(_) => {
-                let expr = self.parse_expression(0)?;
-                self.expect_token(TokenKind::Semicolon)?;
-                Ok(Statement::Expr(expr))
+            TokenKind::For => {
+                // Skip the peeked "for"
+                let Token { span, .. } = self.next_token();
+                self.expect_token(TokenKind::LParen)?;
+                let cond = self.parse_expression(0)?;
+                self.expect_token(TokenKind::RParen)?;
+                let lbrace = self.expect_token(TokenKind::LBrace)?;
+                let stmts = self.parse_statements()?;
+                let rbrace = self.expect_token(TokenKind::RBrace)?;
+                self.eat_if_token(TokenKind::Semicolon);
+
+                Ok(Statement::ForLoop {
+                    span: span.merge(rbrace.span),
+                    cond,
+                    block: Block {
+                        span: lbrace.span.merge(rbrace.span),
+                        statements: stmts,
+                    },
+                })
             }
             TokenKind::If => {
                 // Skip the peeked "if"
@@ -569,21 +567,21 @@ impl<'src> Parser<'src> {
                 let then_rbrace = self.expect_token(TokenKind::RBrace)?;
                 let mut else_if_blocks = Vec::new();
                 let mut else_block = None;
-                while let Some(Token {
+                while let Token {
                     kind: TokenKind::Else,
                     ..
-                }) = self.peek_token()
+                } = self.peek_token()
                 {
                     // Skip the peeked 'else'
-                    self.lexer.next();
+                    self.next_token();
 
-                    if let Some(Token {
+                    if let Token {
                         kind: TokenKind::If,
                         ..
-                    }) = self.peek_token()
+                    } = self.peek_token()
                     {
                         // Skip the peeked 'if'
-                        self.lexer.next();
+                        self.next_token();
                         self.expect_token(TokenKind::LParen)?;
                         let cond = self.parse_expression(0)?;
                         self.expect_token(TokenKind::RParen)?;
@@ -612,7 +610,7 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Semicolon)?;
 
                 Ok(Statement::Expr(Expr {
-                    span: statement_span,
+                    span: token_span,
                     kind: ExprKind::If {
                         cond: Box::new(cond),
                         then: Block {
@@ -623,6 +621,35 @@ impl<'src> Parser<'src> {
                         else_block,
                     },
                 }))
+            }
+            TokenKind::Ident(ident) => {
+                let more = self.lexer.peek_more();
+                if let Some(Ok(Token {
+                    kind: TokenKind::Eq,
+                    ..
+                })) = more
+                {
+                    // This is an assignment
+
+                    // Skip the peeked ident
+                    let _ = self.lexer.next().unwrap();
+                    // Skip the peeked '='
+                    let _ = self.lexer.next().unwrap();
+                    let expr = self.parse_expression(0)?;
+                    self.expect_token(TokenKind::Semicolon)?;
+
+                    return Ok(Statement::Assign {
+                        name: Ident {
+                            inner: ident,
+                            span: token_span,
+                        },
+                        span: token_span.merge(expr.span),
+                        expr,
+                    });
+                }
+                let expr = self.parse_expression(0)?;
+                self.expect_token(TokenKind::Semicolon)?;
+                Ok(Statement::Expr(expr))
             }
             _ => {
                 let e = self.parse_expression(0)?;
@@ -643,10 +670,10 @@ impl<'src> Parser<'src> {
         loop {
             if matches!(
                 self.peek_token(),
-                None | Some(Token {
+                Token {
                     kind: TokenKind::RBrace,
                     ..
-                })
+                }
             ) {
                 break;
             };
@@ -662,10 +689,10 @@ impl<'src> Parser<'src> {
         let mut exprs = Vec::new();
         while !matches!(
             self.peek_token(),
-            Some(Token {
+            Token {
                 kind: TokenKind::StringInterpolationEnd,
                 ..
-            })
+            }
         ) {
             let e = self.parse_string_interpolation_expr(0)?;
             exprs.push(e);
@@ -689,9 +716,7 @@ impl<'src> Parser<'src> {
         &mut self,
         min_bp: u8,
     ) -> Result<Expr<'src>, Diagnostic<'src>> {
-        let Some(token) = self.next_token() else {
-            todo!("Need an EOF span")
-        };
+        let token = self.next_token();
         let expr_span = token.span;
 
         match token.kind {
@@ -712,9 +737,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_expression(&mut self, min_bp: u8) -> Result<Expr<'src>, Diagnostic<'src>> {
-        let Some(token) = self.next_token() else {
-            todo!("Need an EOF span")
-        };
+        let token = self.next_token();
         let expr_span = token.span;
 
         // Create the initial lhs. Then we will, in a recursion like way update lhs to be the lhs with an op and a right side
@@ -752,9 +775,7 @@ impl<'src> Parser<'src> {
         };
 
         loop {
-            let Some(op_token) = self.peek_token() else {
-                break;
-            };
+            let op_token = self.peek_token();
             let expr_span = expr_span.merge(op_token.span);
 
             let op = match op_token.kind {
@@ -778,7 +799,7 @@ impl<'src> Parser<'src> {
                 TokenKind::LBrace => Op::StructInstance,
                 TokenKind::Dot => Op::FieldIndex,
                 TokenKind::StringInterpolationEnd => {
-                    self.lexer.next();
+                    self.next_token();
                     return Ok(lhs);
                 }
                 t => {
@@ -877,10 +898,10 @@ impl<'src> Parser<'src> {
 
         if matches!(
             self.peek_token(),
-            Some(Token {
+            Token {
                 kind: TokenKind::RParen,
                 ..
-            })
+            }
         ) {
             // immediate argument list end
             self.next_token();
@@ -910,10 +931,10 @@ impl<'src> Parser<'src> {
 
         if matches!(
             self.peek_token(),
-            Some(Token {
+            Token {
                 kind: TokenKind::RBrace,
                 ..
-            })
+            }
         ) {
             // immediate argument list end
             self.next_token();
@@ -921,10 +942,10 @@ impl<'src> Parser<'src> {
             loop {
                 if matches!(
                     self.peek_token(),
-                    Some(Token {
+                    Token {
                         kind: TokenKind::RBrace,
                         ..
-                    })
+                    }
                 ) {
                     // struct end
                     self.next_token();

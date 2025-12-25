@@ -9,18 +9,22 @@ use super::lexer::Lexer;
 
 #[allow(unused_braces)]
 #[rustfmt::skip]
-impl<'src> Iterator for Lexer<'src> {
-    type Item = Result<Token<'src>, LexerError<'src>>;
+impl<'src> Lexer<'src> {
+    pub fn next(&mut self) -> Result<Token<'src>, LexerError<'src>>  {
+        self.next_internal(true)
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next) = self.peeked.take() {
-            return Some(next);
+    pub(crate) fn next_internal(&mut self, use_peek_queue: bool) -> Result<Token<'src>, LexerError<'src>> {
+        if use_peek_queue {
+            if let Some(next) = self.peek_queue.pop_front() {
+                return next;
+            }
         }
         if let Some(forced) = self.force_next_token.take() {
-            return Some(forced);
+            return forced;
         }
 
-        if self.eof { return None }
+        if self.eof { return self.error(LexerErrorKind::EofReached); }
 
         self.token = self.cursor;
 
@@ -124,11 +128,11 @@ impl<'src> Iterator for Lexer<'src> {
         <INIT> "."                     { return self.token(TokenKind::Dot) }
 
         // Line comments
-        <INIT> "//"[^\x00\n]*          { return self.next() }
+        <INIT> "//"[^\x00\n]*          { return self.next_internal(use_peek_queue) }
 
         // Whitespace
-        <INIT> [ \t\v\f]+              { return self.next() }
-        <INIT> "\n"                    { return self.next() }
+        <INIT> [ \t\v\f]+              { return self.next_internal(use_peek_queue) }
+        <INIT> "\n"                    { return self.next_internal(use_peek_queue) }
 
         // EOF
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }

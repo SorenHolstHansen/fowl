@@ -133,10 +133,12 @@ fn compile_pipeline(
         }
 
         let (program, parser_errors) = parse(lexer);
-        has_errors = !parser_errors.is_empty();
+        if !parser_errors.is_empty() {
+            has_errors = true;
+        }
         emit_diagnostics(parser_errors);
         if settings.dump_ast {
-            println!("\n== AST ==");
+            println!("\n== AST {path:?} ==");
             println!("{:#?}", program);
         }
 
@@ -150,10 +152,12 @@ fn compile_pipeline(
             println!("{}", lexer.clone().pretty_string());
         }
         let (program, parser_errors) = parse(lexer);
-        has_errors = !parser_errors.is_empty();
+        if !parser_errors.is_empty() {
+            has_errors = true;
+        }
         emit_diagnostics(parser_errors);
         if settings.dump_ast {
-            println!("\n== AST ==");
+            println!("\n== AST {path:?} ==");
             println!("{:#?}", program);
         }
         let p = path
