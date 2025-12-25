@@ -1,3 +1,4 @@
+use analyzer::ast::{self, Program, TypeKind};
 use anyhow::bail;
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{
@@ -8,7 +9,6 @@ use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
 use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
-use typecheck::ast::{self, Program, TypeKind};
 
 pub struct CodegenOptions {
     /// Target triple for cross-compilation (defaults to native)
@@ -313,9 +313,13 @@ impl<'a> FunctionCompiler<'a> {
                         // Explicit return, just lower it
                         self.lower_statement(last_stmt)?;
                     }
-                    ast::Statement::Expr(expr) if !self.builder.func.signature.returns.is_empty() => {
+                    ast::Statement::Expr(expr)
+                        if !self.builder.func.signature.returns.is_empty() =>
+                    {
                         // Last expression in a non-void function becomes the return value
-                        let ret_val = self.eval_expr(expr)?.expect("Non-void function must return a value");
+                        let ret_val = self
+                            .eval_expr(expr)?
+                            .expect("Non-void function must return a value");
                         self.builder.ins().return_(&[ret_val]);
                     }
                     _ => {
@@ -571,7 +575,7 @@ impl<'a> FunctionCompiler<'a> {
             ast::Statement::Let { name, expr, .. } => {
                 let value = self
                     .eval_expr(expr)?
-                    .expect("This should exist. Probably didn't typecheck for void");
+                    .expect("This should exist. Probably didn't analyzer for void");
                 // let ty = type_from_ast(&ty.clone().expect("This can't be void"), &self.module)?
                 //     .expect("This can't be void");
                 let var = self.builder.declare_var(

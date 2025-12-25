@@ -10,4 +10,4 @@ cranelift-codegen = "0.125.4"
 cranelift-module = "0.125.4"
 cranelift-object = "0.125.4"
 target-lexicon = { version = "0.13.3", features = ["std"] }
-typecheck = { workspace = true }
+analyzer = { workspace = true }

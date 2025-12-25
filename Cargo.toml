@@ -13,5 +13,5 @@ fowl_jsonc = { path = "libs/fowl_jsonc" }
 lexer = { path = "libs/lexer" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }
-typecheck = { path = "libs/typecheck" }
+analyzer = { path = "libs/analyzer" }
 utils = { path = "libs/utils" }

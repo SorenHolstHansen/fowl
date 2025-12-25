@@ -168,11 +168,11 @@ fn compile_pipeline(
     }
 
     // Type checker step
-    let (program, typecheck_errors) = typecheck::typecheck(parsed_files, fowl_jsonc.name());
-    if !typecheck_errors.is_empty() {
+    let (program, analyzer_errors) = analyzer::analyzer(parsed_files, fowl_jsonc.name());
+    if !analyzer_errors.is_empty() {
         has_errors = true;
     }
-    emit_diagnostics(typecheck_errors);
+    emit_diagnostics(analyzer_errors);
     if settings.dump_ast {
         println!("\n== TYPED AST ==");
         println!("{:#?}", program);
