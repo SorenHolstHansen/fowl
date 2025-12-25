@@ -292,6 +292,7 @@ impl<'src> Analyzer<'src> {
                 })
             }
             parser_ast::Statement::Assign { name, expr, span } => {
+                // TODO: Check that the variable is mutable
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that type of the name and expr.ty match
                 let name: analyzer_ast::Ident<'src> = (*name).into();
