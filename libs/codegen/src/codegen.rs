@@ -458,10 +458,8 @@ impl<'a> FunctionCompiler<'a> {
                 let else_block = self.builder.create_block();
                 let merge_block = self.builder.create_block();
 
-                self.builder.append_block_param(
-                    merge_block,
-                    type_from_ast(ty, self.module).unwrap().unwrap(),
-                );
+                self.builder
+                    .append_block_param(merge_block, type_from_ast(ty, self.module)?.unwrap());
 
                 self.builder
                     .ins()
@@ -474,14 +472,13 @@ impl<'a> FunctionCompiler<'a> {
                 }
                 let last_in_then = then.statements.last().unwrap();
                 let then_return = if let ast::Statement::Expr(expr) = last_in_then {
-                    self.eval_expr(expr)
+                    self.eval_expr(expr)?
                 } else {
                     todo!()
                 };
-                self.builder.ins().jump(
-                    merge_block,
-                    &[BlockArg::Value(then_return.unwrap().unwrap())],
-                );
+                self.builder
+                    .ins()
+                    .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
 
                 let els = els.as_ref().unwrap();
                 self.builder.switch_to_block(else_block);
@@ -491,14 +488,13 @@ impl<'a> FunctionCompiler<'a> {
                 }
                 let last_in_else = els.statements.last().unwrap();
                 let else_return = if let ast::Statement::Expr(expr) = last_in_else {
-                    self.eval_expr(expr)
+                    self.eval_expr(expr)?
                 } else {
                     todo!()
                 };
-                self.builder.ins().jump(
-                    merge_block,
-                    &[BlockArg::Value(else_return.unwrap().unwrap())],
-                );
+                self.builder
+                    .ins()
+                    .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
 
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
