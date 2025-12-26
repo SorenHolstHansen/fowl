@@ -539,10 +539,23 @@ impl<'src> Parser<'src> {
             TokenKind::For => {
                 // Skip the peeked "for"
                 let Token { span, .. } = self.next_token();
-                self.expect_token(TokenKind::LParen)?;
-                let cond = self.parse_expression(0)?;
-                self.expect_token(TokenKind::RParen)?;
-                let lbrace = self.expect_token(TokenKind::LBrace)?;
+                let (cond, lbrace) = match self.next_token() {
+                    t if t.kind == TokenKind::LBrace => (None, t),
+                    t if t.kind == TokenKind::LParen => {
+                        let cond = self.parse_expression(0)?;
+                        self.expect_token(TokenKind::RParen)?;
+                        let lbrace = self.expect_token(TokenKind::LBrace)?;
+
+                        (Some(cond), lbrace)
+                    }
+                    t => {
+                        return Err(Diagnostic::error(
+                            span,
+                            format!("Expected a '(' or '{{', found '{}'", t.kind),
+                        )
+                        .with_error_label(span, "here"));
+                    }
+                };
                 let stmts = self.parse_statements()?;
                 let rbrace = self.expect_token(TokenKind::RBrace)?;
                 self.eat_if_token(TokenKind::Semicolon);

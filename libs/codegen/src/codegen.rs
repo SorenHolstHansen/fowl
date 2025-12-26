@@ -7,9 +7,7 @@ use cranelift_codegen::{
 };
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
-use std::{
-    any::Any, collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc,
-};
+use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command, sync::Arc};
 use target_lexicon::Triple;
 
 pub struct CodegenOptions {
@@ -660,7 +658,10 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.ins().jump(header_block, &[]);
                 self.builder.switch_to_block(header_block);
 
-                let condition_value = self.eval_expr(cond)?.unwrap();
+                let condition_value = match cond {
+                    Some(cond) => self.eval_expr(cond)?.unwrap(),
+                    None => self.builder.ins().iconst(types::I64, 1),
+                };
                 self.builder
                     .ins()
                     .brif(condition_value, body_block, &[], exit_block, &[]);

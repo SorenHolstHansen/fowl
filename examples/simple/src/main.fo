@@ -10,14 +10,14 @@ fn main() void {
 	
 	for {
 		let new = m + n
-		if new >= below {
+		if (new >= below) {
 			break
 		}
 
 		n = m
 		m = new
 
-		if m % 2 == 0 {
+		if (m % 2 == 0) {
 			sum = sum + m
 		}
 	}

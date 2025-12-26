@@ -269,7 +269,7 @@ pub enum Statement<'src> {
     Expr(Expr<'src>),
     ForLoop {
         span: Span<'src>,
-        cond: Expr<'src>,
+        cond: Option<Expr<'src>>,
         block: Block<'src>,
     },
 }

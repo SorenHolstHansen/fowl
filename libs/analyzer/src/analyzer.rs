@@ -2,6 +2,7 @@ use super::ast as analyzer_ast;
 use crate::ast::Vis;
 use error::Diagnostic;
 use parser::ast::{self as parser_ast};
+use span::Span;
 use std::collections::HashMap;
 use utils::a_or_an;
 
@@ -81,13 +82,20 @@ impl ContextNameMapping {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Variable<'src> {
+    type_kind: analyzer_ast::TypeKind<'src>,
+    mutable: bool,
+    name_span: Span<'src>,
+}
+
 struct Analyzer<'src> {
     parsed_files: HashMap<String, parser_ast::Program<'src>>,
     analyzered_declarations: TypecheckedDeclarations<'src>,
     // Complete program after analyzering
     program: analyzer_ast::Program<'src>,
     errors: Vec<Diagnostic<'src>>,
-    variables: HashMap<&'src str, analyzer_ast::TypeKind<'src>>,
+    variables: HashMap<&'src str, Variable<'src>>,
     current_module_name: String,
     context_name_mapping: ContextNameMapping,
 }
@@ -178,7 +186,14 @@ impl<'src> Analyzer<'src> {
         let mut params = Vec::with_capacity(function.params.len());
         for param in &function.params {
             let ty = self.visit_type(&param.ty)?;
-            self.variables.insert(param.name.inner, ty.kind);
+            self.variables.insert(
+                param.name.inner,
+                Variable {
+                    type_kind: ty.kind,
+                    mutable: false,
+                    name_span: param.span,
+                },
+            );
             params.push(analyzer_ast::Param {
                 span: param.span,
                 name: param.name.into(),
@@ -282,7 +297,14 @@ impl<'src> Analyzer<'src> {
                 // TODO: check that ty and expr.ty match
                 let name: analyzer_ast::Ident<'src> = (*name).into();
                 let ty = *expr.ty();
-                self.variables.insert(name.inner, ty);
+                self.variables.insert(
+                    name.inner,
+                    Variable {
+                        type_kind: ty,
+                        mutable: *mutable,
+                        name_span: name.span,
+                    },
+                );
                 Ok(analyzer_ast::Statement::Let {
                     name,
                     ty,
@@ -292,25 +314,31 @@ impl<'src> Analyzer<'src> {
                 })
             }
             parser_ast::Statement::Assign { name, expr, span } => {
-                // TODO: Check that the variable is mutable
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that type of the name and expr.ty match
                 let name: analyzer_ast::Ident<'src> = (*name).into();
                 let ty = *expr.ty();
-                let Some(expected_ty) = self.variables.get(name.inner) else {
+                let Some(expected_var) = self.variables.get(name.inner) else {
                     return Err(Diagnostic::error(
                         *span,
                         format!("A variable with the name '{}' does not exist", name.inner),
                     )
                     .with_error_label(*span, "here"));
                 };
-                if expected_ty != &ty {
+                if !expected_var.mutable {
+                    return Err(Diagnostic::error(*span, "Variable is not mutable")
+                        .with_error_label(
+                            expected_var.name_span,
+                            "Variable defined here. Consider making it mutable",
+                        ));
+                }
+                if expected_var.type_kind != ty {
                     return Err(
                         Diagnostic::error(*span, "Mismatched types").with_error_label(
                             name.span,
                             format!(
                                 "This variable has type '{}', but is being assigned a(n) '{}'",
-                                expected_ty, ty
+                                expected_var.type_kind, ty
                             ),
                         ),
                     );
@@ -337,13 +365,20 @@ impl<'src> Analyzer<'src> {
                 }
             },
             parser_ast::Statement::ForLoop { span, cond, block } => {
-                let cond = self.visit_expr(cond)?;
-                if *cond.ty() != analyzer_ast::TypeKind::Bool {
-                    return Err(
-                        Diagnostic::error(*span, "Expected the condition to be a boolean")
-                            .with_error_label(*span, "here"),
-                    );
-                }
+                let cond = match cond {
+                    Some(cond) => {
+                        let cond = self.visit_expr(cond)?;
+                        if *cond.ty() != analyzer_ast::TypeKind::Bool {
+                            return Err(Diagnostic::error(
+                                *span,
+                                "Expected the condition to be a boolean",
+                            )
+                            .with_error_label(*span, "here"));
+                        };
+                        Some(cond)
+                    }
+                    None => None,
+                };
                 Ok(analyzer_ast::Statement::ForLoop {
                     span: *span,
                     cond,
@@ -378,11 +413,14 @@ impl<'src> Analyzer<'src> {
             }
             parser_ast::ExprKind::Ident(i) => {
                 let ident: analyzer_ast::Ident<'src> = (*i).into();
-                let ty = *self
+                let var = *self
                     .variables
                     .get(&ident.inner)
                     .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
-                Ok(analyzer_ast::Expr::Ident { ident, ty })
+                Ok(analyzer_ast::Expr::Ident {
+                    ident,
+                    ty: var.type_kind,
+                })
             }
             parser_ast::ExprKind::Binary { op, left, right } => {
                 let left_expr = self.visit_expr(left)?;
