@@ -2,25 +2,17 @@ use simple.utils.add
 use std.io.println
 
 fn main() void {
-	let below = 4000000
-	let mut sum = 0
-
-	let mut n = 1
-	let mut m = 1
-	
-	for {
-		let new = m + n
-		if (new >= below) {
-			break
-		}
-
-		n = m
-		m = new
-
-		if (m % 2 == 0) {
-			sum = sum + m
-		}
+	let n = 100
+	let n_p_one = n + 1
+	let sum = n * n_p_one / 2
+    let square_of_sum = sum * sum
+	let mut sum_of_squares = 0
+	let mut i = 1
+	for (i <= n) {
+		sum_of_squares = sum_of_squares + i * i
+		i = i + 1
 	}
+    let res = square_of_sum - sum_of_squares
 
-	println("sum = {sum}")
+	println("res = {res}")
 }

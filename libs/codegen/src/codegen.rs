@@ -421,9 +421,9 @@ impl<'a> FunctionCompiler<'a> {
                 match op {
                     ast::BinaryOp::Add => Ok(Some(self.builder.ins().iadd(left_expr, right_expr))),
                     ast::BinaryOp::Sub => Ok(Some(self.builder.ins().isub(left_expr, right_expr))),
-                    ast::BinaryOp::Mul => todo!(),
-                    ast::BinaryOp::Div => todo!(),
-                    ast::BinaryOp::Mod => Ok(Some(self.builder.ins().urem(left_expr, right_expr))),
+                    ast::BinaryOp::Mul => Ok(Some(self.builder.ins().imul(left_expr, right_expr))),
+                    ast::BinaryOp::Div => Ok(Some(self.builder.ins().sdiv(left_expr, right_expr))),
+                    ast::BinaryOp::Mod => Ok(Some(self.builder.ins().srem(left_expr, right_expr))),
                     ast::BinaryOp::Exp => todo!(),
                     ast::BinaryOp::Eq => Ok(Some(self.builder.ins().icmp(
                         IntCC::Equal,
@@ -440,8 +440,16 @@ impl<'a> FunctionCompiler<'a> {
                         left_expr,
                         right_expr,
                     ))),
-                    ast::BinaryOp::Gt => todo!(),
-                    ast::BinaryOp::LtEq => todo!(),
+                    ast::BinaryOp::Gt => Ok(Some(self.builder.ins().icmp(
+                        IntCC::SignedGreaterThan,
+                        left_expr,
+                        right_expr,
+                    ))),
+                    ast::BinaryOp::LtEq => Ok(Some(self.builder.ins().icmp(
+                        IntCC::SignedLessThanOrEqual,
+                        left_expr,
+                        right_expr,
+                    ))),
                     ast::BinaryOp::GtEq => Ok(Some(self.builder.ins().icmp(
                         IntCC::SignedGreaterThanOrEqual,
                         left_expr,
