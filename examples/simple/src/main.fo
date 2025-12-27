@@ -3,8 +3,7 @@ use std.io.println
 
 fn main() void {
 	let n = 100
-	let n_p_one = n + 1
-	let sum = n * n_p_one / 2
+	let sum = n * (n + 1) / 2
     let square_of_sum = sum * sum
 	let mut sum_of_squares = 0
 	let mut i = 1

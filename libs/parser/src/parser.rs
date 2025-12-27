@@ -789,6 +789,13 @@ impl<'src> Parser<'src> {
                 kind: ExprKind::StringLiteral(Some(s)),
                 span: expr_span,
             },
+            // groups
+            TokenKind::LParen => {
+                let lhs = self.parse_expression(0)?;
+                self.expect_token(TokenKind::RParen)?;
+
+                lhs
+            }
             t => {
                 return Err(
                     Diagnostic::error(expr_span, format!("Unexpected token '{}'", t))
