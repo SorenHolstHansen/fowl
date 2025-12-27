@@ -295,6 +295,12 @@ pub enum Statement<'src> {
         cond: Option<Expr<'src>>,
         block: Block<'src>,
     },
+    Break {
+        span: Span<'src>,
+    },
+    Continue {
+        span: Span<'src>,
+    },
 }
 
 impl<'src> Statement<'src> {
@@ -308,6 +314,8 @@ impl<'src> Statement<'src> {
             Statement::Enum(e) => &e.span,
             Statement::Expr(expr) => &expr.span,
             Statement::ForLoop { span, .. } => span,
+            Statement::Break { span, .. } => span,
+            Statement::Continue { span, .. } => span,
         }
     }
 }

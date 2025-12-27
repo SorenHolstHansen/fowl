@@ -197,11 +197,17 @@ fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> anyhow::Resul
     }
 }
 
+struct Loop {
+    header_block: Block,
+    exit_block: Block,
+}
+
 struct FunctionCompiler<'a> {
     builder: FunctionBuilder<'a>,
     isa: Arc<dyn TargetIsa>,
     module: &'a mut ObjectModule,
     variables: HashMap<String, Variable>,
+    loop_stack: Vec<Loop>,
 }
 
 impl<'a> FunctionCompiler<'a> {
@@ -217,6 +223,7 @@ impl<'a> FunctionCompiler<'a> {
             isa,
             module,
             variables: HashMap::new(),
+            loop_stack: Vec::new(),
         }
     }
 
@@ -303,7 +310,7 @@ impl<'a> FunctionCompiler<'a> {
             } else {
                 // Process all statements except possibly the last
                 for statement in &statements[..statements.len() - 1] {
-                    self.lower_statement(statement)?;
+                    let _ = self.lower_statement(statement)?;
                 }
 
                 // Handle the last statement
@@ -311,7 +318,7 @@ impl<'a> FunctionCompiler<'a> {
                 match last_stmt {
                     ast::Statement::Return { .. } => {
                         // Explicit return, just lower it
-                        self.lower_statement(last_stmt)?;
+                        let _ = self.lower_statement(last_stmt)?;
                     }
                     ast::Statement::Expr(expr)
                         if !self.builder.func.signature.returns.is_empty() =>
@@ -324,7 +331,7 @@ impl<'a> FunctionCompiler<'a> {
                     }
                     _ => {
                         // Any other statement
-                        self.lower_statement(last_stmt)?;
+                        let _ = self.lower_statement(last_stmt)?;
                         // Add implicit return for void functions
                         if self.builder.func.signature.returns.is_empty() {
                             self.builder.ins().return_(&[]);
@@ -435,7 +442,11 @@ impl<'a> FunctionCompiler<'a> {
                     ))),
                     ast::BinaryOp::Gt => todo!(),
                     ast::BinaryOp::LtEq => todo!(),
-                    ast::BinaryOp::GtEq => todo!(),
+                    ast::BinaryOp::GtEq => Ok(Some(self.builder.ins().icmp(
+                        IntCC::SignedGreaterThanOrEqual,
+                        left_expr,
+                        right_expr,
+                    ))),
                     ast::BinaryOp::And => todo!(),
                     ast::BinaryOp::Or => Ok(Some(self.builder.ins().bor(left_expr, right_expr))),
                 }
@@ -471,7 +482,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.switch_to_block(then_block);
                 self.builder.seal_block(then_block);
                 for statement in &then.statements[..then.statements.len() - 1] {
-                    self.lower_statement(statement)?;
+                    let _ = self.lower_statement(statement)?;
                 }
 
                 if let Some(last_in_then) = then.statements.last() {
@@ -485,8 +496,10 @@ impl<'a> FunctionCompiler<'a> {
                             .ins()
                             .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
                     } else {
-                        self.lower_statement(last_in_then)?;
-                        self.builder.ins().jump(merge_block, &[]);
+                        let terminates = self.lower_statement(last_in_then)?;
+                        if !terminates {
+                            self.builder.ins().jump(merge_block, &[]);
+                        }
                     }
                 } else {
                     self.builder.ins().jump(merge_block, &[]);
@@ -497,7 +510,7 @@ impl<'a> FunctionCompiler<'a> {
 
                 if let Some(els) = els {
                     for statement in &els.statements[..els.statements.len() - 1] {
-                        self.lower_statement(statement)?;
+                        let _ = self.lower_statement(statement)?;
                     }
 
                     if let Some(last_in_else) = els.statements.last() {
@@ -511,8 +524,10 @@ impl<'a> FunctionCompiler<'a> {
                                 .ins()
                                 .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
                         } else {
-                            self.lower_statement(last_in_else)?;
-                            self.builder.ins().jump(merge_block, &[]);
+                            let terminates = self.lower_statement(last_in_else)?;
+                            if !terminates {
+                                self.builder.ins().jump(merge_block, &[]);
+                            }
                         }
                     } else {
                         self.builder.ins().jump(merge_block, &[]);
@@ -601,7 +616,7 @@ impl<'a> FunctionCompiler<'a> {
         Ok(result_ptr)
     }
 
-    fn lower_statement(&mut self, statement: &ast::Statement) -> anyhow::Result<()> {
+    fn lower_statement(&mut self, statement: &ast::Statement) -> anyhow::Result<bool> {
         match statement {
             ast::Statement::Let { name, expr, .. } => {
                 let value = self
@@ -615,7 +630,7 @@ impl<'a> FunctionCompiler<'a> {
                 );
                 self.builder.def_var(var, value);
                 self.variables.insert(name.inner.to_string(), var);
-                Ok(())
+                Ok(false)
             }
             ast::Statement::Assign {
                 name,
@@ -635,25 +650,30 @@ impl<'a> FunctionCompiler<'a> {
 
                 // Update the variable
                 self.builder.def_var(*var, value);
-                Ok(())
+                Ok(false)
             }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {
                     self.builder.ins().return_(&[]);
-                    Ok(())
+                    Ok(true)
                 }
                 Some(expr) => {
                     let ret = self
                         .eval_expr(expr)?
                         .expect("Should have been caught in type checking, that this is void");
                     self.builder.ins().return_(&[ret]);
-                    Ok(())
+                    Ok(true)
                 }
             },
             ast::Statement::ForLoop { span, cond, block } => {
                 let header_block = self.builder.create_block();
                 let body_block = self.builder.create_block();
                 let exit_block = self.builder.create_block();
+
+                self.loop_stack.push(Loop {
+                    header_block,
+                    exit_block,
+                });
 
                 self.builder.ins().jump(header_block, &[]);
                 self.builder.switch_to_block(header_block);
@@ -669,10 +689,13 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.switch_to_block(body_block);
                 self.builder.seal_block(body_block);
 
+                let mut last_terminates = false;
                 for stmt in &block.statements {
-                    self.lower_statement(stmt)?;
+                    last_terminates = self.lower_statement(stmt)?;
                 }
-                self.builder.ins().jump(header_block, &[]);
+                if !last_terminates {
+                    self.builder.ins().jump(header_block, &[]);
+                }
 
                 self.builder.switch_to_block(exit_block);
 
@@ -681,16 +704,37 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.seal_block(header_block);
                 self.builder.seal_block(exit_block);
 
+                // Pop the loop from the stack now that we're done processing it
+                self.loop_stack.pop();
+
                 // Just return 0 for now.
                 // self.builder.ins().iconst(self.int, 0);
-                Ok(())
+                Ok(false)
             }
             ast::Statement::Function(_) => todo!(),
             ast::Statement::Struct(_) => todo!(),
             ast::Statement::Enum(_) => todo!(),
             ast::Statement::Expr(expr) => {
                 self.eval_expr(expr)?;
-                Ok(())
+                Ok(false)
+            }
+            ast::Statement::Break { .. } => {
+                let l = self
+                    .loop_stack
+                    .last()
+                    .expect("Analyzer should have checked that the break is inside a loop");
+                self.builder.ins().jump(l.exit_block, &[]);
+
+                Ok(true)
+            }
+            ast::Statement::Continue { .. } => {
+                let l = self
+                    .loop_stack
+                    .last()
+                    .expect("Analyzer should have checked that the continue is inside a loop");
+                self.builder.ins().jump(l.header_block, &[]);
+
+                Ok(true)
             }
         }
     }

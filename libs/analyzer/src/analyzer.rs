@@ -327,10 +327,12 @@ impl<'src> Analyzer<'src> {
                 };
                 if !expected_var.mutable {
                     return Err(Diagnostic::error(*span, "Variable is not mutable")
-                        .with_error_label(
+                        .with_error_label(name.span, "This variable is not mutable")
+                        .with_info_label(
                             expected_var.name_span,
                             "Variable defined here. Consider making it mutable",
-                        ));
+                        )
+                        .with_help(format!("Add `mut` keyword: `let mut {} = ...`", name.inner)));
                 }
                 if expected_var.type_kind != ty {
                     return Err(
@@ -391,6 +393,12 @@ impl<'src> Analyzer<'src> {
             parser_ast::Statement::Expr(expr) => {
                 let expr = self.visit_expr(expr)?;
                 Ok(analyzer_ast::Statement::Expr(expr))
+            }
+            parser_ast::Statement::Break { span } => {
+                Ok(analyzer_ast::Statement::Break { span: *span })
+            }
+            parser_ast::Statement::Continue { span } => {
+                Ok(analyzer_ast::Statement::Continue { span: *span })
             }
         }
     }

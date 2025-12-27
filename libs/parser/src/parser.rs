@@ -664,6 +664,16 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Semicolon)?;
                 Ok(Statement::Expr(expr))
             }
+            TokenKind::Break => {
+                let _ = self.lexer.next();
+                self.expect_token(TokenKind::Semicolon)?;
+                Ok(Statement::Break { span: token_span })
+            }
+            TokenKind::Continue => {
+                let _ = self.lexer.next();
+                self.expect_token(TokenKind::Semicolon)?;
+                Ok(Statement::Continue { span: token_span })
+            }
             _ => {
                 let e = self.parse_expression(0)?;
                 self.expect_token(TokenKind::Semicolon)?;
