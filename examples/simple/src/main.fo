@@ -9,7 +9,7 @@ fn main() void {
 	let mut i = 1
 	for (i <= n) {
 		sum_of_squares = sum_of_squares + i * i
-		i = i + 1
+		i += 1
 	}
     let res = square_of_sum - sum_of_squares
 

@@ -637,32 +637,77 @@ impl<'src> Parser<'src> {
             }
             TokenKind::Ident(ident) => {
                 let more = self.lexer.peek_more();
-                if let Some(Ok(Token {
-                    kind: TokenKind::Eq,
-                    ..
-                })) = more
-                {
-                    // This is an assignment
+                let op = match more {
+                    Some(Ok(Token {
+                        kind: TokenKind::PlusEq,
+                        ..
+                    })) => BinaryOp::Add,
+                    Some(Ok(Token {
+                        kind: TokenKind::MinusEq,
+                        ..
+                    })) => BinaryOp::Sub,
+                    Some(Ok(Token {
+                        kind: TokenKind::StarEq,
+                        ..
+                    })) => BinaryOp::Mul,
+                    Some(Ok(Token {
+                        kind: TokenKind::SlashEq,
+                        ..
+                    })) => BinaryOp::Div,
+                    Some(Ok(Token {
+                        kind: TokenKind::Eq,
+                        ..
+                    })) => {
+                        // This is an assignment
 
-                    // Skip the peeked ident
-                    let _ = self.lexer.next().unwrap();
-                    // Skip the peeked '='
-                    let _ = self.lexer.next().unwrap();
-                    let expr = self.parse_expression(0)?;
-                    self.expect_token(TokenKind::Semicolon)?;
+                        // Skip the peeked ident
+                        let _ = self.lexer.next().unwrap();
+                        // Skip the peeked '='
+                        let _ = self.lexer.next().unwrap();
+                        let expr = self.parse_expression(0)?;
+                        self.expect_token(TokenKind::Semicolon)?;
 
-                    return Ok(Statement::Assign {
-                        name: Ident {
-                            inner: ident,
-                            span: token_span,
-                        },
-                        span: token_span.merge(expr.span),
-                        expr,
-                    });
-                }
+                        return Ok(Statement::Assign {
+                            name: Ident {
+                                inner: ident,
+                                span: token_span,
+                            },
+                            span: token_span.merge(expr.span),
+                            expr,
+                        });
+                    }
+                    _ => {
+                        let expr = self.parse_expression(0)?;
+                        self.expect_token(TokenKind::Semicolon)?;
+                        return Ok(Statement::Expr(expr));
+                    }
+                };
+                // Skip the peeked ident
+                let _ = self.lexer.next().unwrap();
+                // Skip the peeked op
+                let _ = self.lexer.next().unwrap();
                 let expr = self.parse_expression(0)?;
+                let name = Ident {
+                    inner: ident,
+                    span: token_span,
+                };
+                let expr = Expr {
+                    span: name.span.merge(expr.span),
+                    kind: ExprKind::Binary {
+                        op,
+                        left: Box::new(Expr {
+                            kind: ExprKind::Ident(name),
+                            span: name.span,
+                        }),
+                        right: Box::new(expr),
+                    },
+                };
                 self.expect_token(TokenKind::Semicolon)?;
-                Ok(Statement::Expr(expr))
+                Ok(Statement::Assign {
+                    name,
+                    span: token_span.merge(expr.span),
+                    expr,
+                })
             }
             TokenKind::Break => {
                 let _ = self.lexer.next();
