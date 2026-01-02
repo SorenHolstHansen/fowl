@@ -123,9 +123,16 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
+pub struct CallArg<'src> {
+    pub label: Option<Ident<'src>>,
+    pub expr: Expr<'src>,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Call<'src> {
     pub callee: Box<Expr<'src>>,
-    pub args: Vec<Expr<'src>>,
+    pub args: Vec<CallArg<'src>>,
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +211,7 @@ pub struct Type<'src> {
 pub struct Param<'src> {
     pub span: Span<'src>,
     pub name: Ident<'src>,
+    pub label_ignored: bool,
     pub ty: Type<'src>,
     pub default: Option<Expr<'src>>,
 }

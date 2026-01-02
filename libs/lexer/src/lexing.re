@@ -3,6 +3,7 @@
     re2c:encoding-policy = ignore;
  */
 
+#![allow(clippy::all)]
 use super::token::{Token, TokenKind};
 use super::lexer_error::{LexerError, LexerErrorKind};
 use super::lexer::Lexer;

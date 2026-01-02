@@ -1,0 +1,10 @@
+[package]
+name = "bir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+analyzer = { workspace = true }
+error = { workspace = true }
+span = { workspace = true }
+utils = { workspace = true }

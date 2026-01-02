@@ -6,12 +6,13 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
+analyzer = { path = "libs/analyzer" }
 anyhow = "1"
+bir = { path = "libs/bir" }
 codegen = { path = "libs/codegen" }
 error = { path = "libs/error" }
 fowl_jsonc = { path = "libs/fowl_jsonc" }
 lexer = { path = "libs/lexer" }
 parser = { path = "libs/parser" }
 span = { path = "libs/span" }
-analyzer = { path = "libs/analyzer" }
 utils = { path = "libs/utils" }

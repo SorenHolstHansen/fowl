@@ -163,11 +163,12 @@ mod test {
 
     #[test]
     fn test_lex2() {
-        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo");
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo").unwrap();
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
-        let lexer = Lexer::new(source, path);
-        for token in lexer {
+        let mut lexer = Lexer::new(source, &path);
+        loop {
+            let token = lexer.next();
             match token {
                 Ok(t) => {
                     println!("TOKEN {} {}", t.span, t.kind);

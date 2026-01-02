@@ -2,7 +2,7 @@ use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
-use crate::ast::{BinaryOp, Expr, Use, Vis};
+use crate::ast::{BinaryOp, CallArg, Expr, Use, Vis};
 use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
 
@@ -156,7 +156,9 @@ impl<'src> Parser<'src> {
                 kind: TokenKind::Eof,
                 span,
             } => Err(Diagnostic::error(span, "Unexpected EOF")),
-            Token { kind: _, span } => Err(Diagnostic::error(span, "expected type")),
+            Token { kind: _, span } => {
+                Err(Diagnostic::error(span, "expected type").with_error_label(span, "here"))
+            }
         }
     }
 
@@ -445,18 +447,21 @@ impl<'src> Parser<'src> {
         }
 
         loop {
-            let param_name = self
+            let param_label = self
                 .parse_ident()
-                .map_err(|e| e.with_note("expected parameter name"))?;
-            let param_span = param_name.span;
-
+                .map_err(|e| e.with_note("expected parameter name or label"))?;
+            let (label_ignored, name) = match param_label.inner {
+                "_" => (true, self.parse_ident()?),
+                _ => (false, param_label),
+            };
             self.expect_token(TokenKind::Colon)?;
 
             let ty = self.parse_type()?;
 
             parameters.push(Param {
-                span: param_span.merge(ty.span),
-                name: param_name,
+                span: param_label.span.merge(ty.span),
+                label_ignored,
+                name,
                 ty,
                 default: None,
             });
@@ -637,6 +642,7 @@ impl<'src> Parser<'src> {
             }
             TokenKind::Ident(ident) => {
                 let more = self.lexer.peek_more();
+                // TODO: Don't resolve the += (and similar) syntax sugar here, but in BIR
                 let op = match more {
                     Some(Ok(Token {
                         kind: TokenKind::PlusEq,
@@ -966,7 +972,7 @@ impl<'src> Parser<'src> {
         Ok(lhs)
     }
 
-    fn parse_fn_call_arguments(&mut self) -> Result<Vec<Expr<'src>>, Diagnostic<'src>> {
+    fn parse_fn_call_arguments(&mut self) -> Result<Vec<CallArg<'src>>, Diagnostic<'src>> {
         let mut arguments = Vec::new();
 
         // parent has already eaten left paren as the operator
@@ -982,11 +988,32 @@ impl<'src> Parser<'src> {
             self.next_token();
         } else {
             loop {
-                // let param_name = self.parse_ident()?;
-                // self.expect_token(TokenKind::Equals)?;
-
+                let mut call_arg_span = None;
+                let label = if let Token {
+                    kind: TokenKind::Ident(i),
+                    span,
+                } = self.peek_token()
+                {
+                    call_arg_span = Some(*span);
+                    Some(Ident {
+                        inner: i,
+                        span: *span,
+                    })
+                } else {
+                    None
+                };
+                if label.is_some() {
+                    let _ = self.lexer.next();
+                    self.expect_token(TokenKind::Eq)?;
+                }
                 let value = self.parse_expression(0)?;
-                arguments.push(value);
+                arguments.push(CallArg {
+                    span: call_arg_span
+                        .map(|s| s.merge(value.span))
+                        .unwrap_or(value.span),
+                    label,
+                    expr: value,
+                });
 
                 let token = self.expect_one_of_token(&[TokenKind::RParen, TokenKind::Comma])?;
 
