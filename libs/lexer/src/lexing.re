@@ -113,6 +113,8 @@ impl<'src> Lexer<'src> {
         <STRING> "\""                  => INIT { return self.token(TokenKind::StringInterpolationEnd) }
         
 
+        <INIT> "_"                     { return self.token(TokenKind::Underscore) }
+
         // Identifiers
         <INIT> [a-zA-Z_] [a-zA-Z_0-9]* { return self.ident() }
 

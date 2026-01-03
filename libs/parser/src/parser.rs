@@ -447,19 +447,21 @@ impl<'src> Parser<'src> {
         }
 
         loop {
-            let param_label = self
-                .parse_ident()
-                .map_err(|e| e.with_note("expected parameter name or label"))?;
-            let (label_ignored, name) = match param_label.inner {
-                "_" => (true, self.parse_ident()?),
-                _ => (false, param_label),
+            let peeked = self.peek_token();
+            let span = peeked.span;
+            let label_ignored = if peeked.kind == TokenKind::Underscore {
+                self.lexer.next().unwrap();
+                true
+            } else {
+                false
             };
+            let name = self.parse_ident()?;
             self.expect_token(TokenKind::Colon)?;
 
             let ty = self.parse_type()?;
 
             parameters.push(Param {
-                span: param_label.span.merge(ty.span),
+                span: span.merge(ty.span),
                 label_ignored,
                 name,
                 ty,

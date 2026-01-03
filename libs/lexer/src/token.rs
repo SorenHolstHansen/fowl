@@ -81,6 +81,8 @@ pub enum TokenKind<'src> {
     StringLiteral(&'src str),
 
     // Structural
+    /// token `_`
+    Underscore,
     /// token `:`
     Colon,
     /// token `;`
@@ -189,6 +191,7 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::StringInterpolationStart => write!(f, "StringInterpolationStart"),
             TokenKind::StringInterpolationEnd => write!(f, "StringInterpolationEnd"),
             TokenKind::StringLiteral(s) => write!(f, "StringLiteral(\"{}\")", s),
+            TokenKind::Underscore => write!(f, "_"),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Semicolon => write!(f, ";"),
             TokenKind::LParen => write!(f, "("),
