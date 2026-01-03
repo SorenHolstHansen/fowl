@@ -561,7 +561,14 @@ impl<'src> Analyzer<'src> {
                     for (i, param) in func.params.iter().enumerate() {
                         if param.label_ignored {
                             // Use index
-                            let arg = &call.args[i];
+                            let Some(arg) = &call.args.get(i) else {
+                                return Err(Diagnostic::error(
+                                    param.span,
+                                    "Missing argument for this parameter",
+                                )
+                                .with_error_label(param.span, "here")
+                                .with_error_label(call.callee.span, "missing arg here"));
+                            };
                             if arg.label.is_some() {
                                 return Err(Diagnostic::error(
                                     arg.span,
@@ -612,15 +619,24 @@ impl<'src> Analyzer<'src> {
                                     }
                                 }
                             }
-                            None => {
-                                if func.params.len() < i + 1 {
+                            None => match func.params.get(i) {
+                                Some(param) => {
+                                    if !param.label_ignored {
+                                        return Err(Diagnostic::error(
+                                        arg.span,
+                                        "The corresponding function parameter expects a label, but not used",
+                                    )
+                                    .with_error_label(arg.span, "here"));
+                                    }
+                                }
+                                None => {
                                     return Err(Diagnostic::error(
                                         arg.span,
                                         "No param matches this arg, out of bounds",
                                     )
                                     .with_error_label(arg.span, "here"));
                                 }
-                            }
+                            },
                         }
                     }
                     // TODO: verify call matches the signature of the function
