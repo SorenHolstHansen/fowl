@@ -182,6 +182,9 @@ fn compile_pipeline(
         println!("{:#?}", program);
     }
 
+    // BIR
+    let program = bir::bir(program);
+
     if has_errors {
         std::process::exit(1);
     }

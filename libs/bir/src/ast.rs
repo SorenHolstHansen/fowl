@@ -1,5 +1,3 @@
-use span::Span;
-
 #[derive(Debug, Clone)]
 pub struct Program<'src> {
     pub declarations: Vec<Declaration<'src>>,
@@ -8,15 +6,11 @@ pub struct Program<'src> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ident<'src> {
     pub inner: &'src str,
-    pub span: Span<'src>,
 }
 
-impl<'src> From<parser::ast::Ident<'src>> for Ident<'src> {
-    fn from(value: parser::ast::Ident<'src>) -> Self {
-        Ident {
-            inner: value.inner,
-            span: value.span,
-        }
+impl<'src> From<analyzer::ast::Ident<'src>> for Ident<'src> {
+    fn from(value: analyzer::ast::Ident<'src>) -> Self {
+        Ident { inner: value.inner }
     }
 }
 
@@ -43,23 +37,23 @@ pub enum BinaryOp {
     Or,
 }
 
-impl From<parser::ast::BinaryOp> for BinaryOp {
-    fn from(value: parser::ast::BinaryOp) -> Self {
+impl From<analyzer::ast::BinaryOp> for BinaryOp {
+    fn from(value: analyzer::ast::BinaryOp) -> Self {
         match value {
-            parser::ast::BinaryOp::Add => BinaryOp::Add,
-            parser::ast::BinaryOp::Sub => BinaryOp::Sub,
-            parser::ast::BinaryOp::Mul => BinaryOp::Mul,
-            parser::ast::BinaryOp::Div => BinaryOp::Div,
-            parser::ast::BinaryOp::Mod => BinaryOp::Mod,
-            parser::ast::BinaryOp::Exp => BinaryOp::Exp,
-            parser::ast::BinaryOp::Eq => BinaryOp::Eq,
-            parser::ast::BinaryOp::Ne => BinaryOp::Ne,
-            parser::ast::BinaryOp::Lt => BinaryOp::Lt,
-            parser::ast::BinaryOp::Gt => BinaryOp::Gt,
-            parser::ast::BinaryOp::LtEq => BinaryOp::LtEq,
-            parser::ast::BinaryOp::GtEq => BinaryOp::GtEq,
-            parser::ast::BinaryOp::And => BinaryOp::And,
-            parser::ast::BinaryOp::Or => BinaryOp::Or,
+            analyzer::ast::BinaryOp::Add => BinaryOp::Add,
+            analyzer::ast::BinaryOp::Sub => BinaryOp::Sub,
+            analyzer::ast::BinaryOp::Mul => BinaryOp::Mul,
+            analyzer::ast::BinaryOp::Div => BinaryOp::Div,
+            analyzer::ast::BinaryOp::Mod => BinaryOp::Mod,
+            analyzer::ast::BinaryOp::Exp => BinaryOp::Exp,
+            analyzer::ast::BinaryOp::Eq => BinaryOp::Eq,
+            analyzer::ast::BinaryOp::Ne => BinaryOp::Ne,
+            analyzer::ast::BinaryOp::Lt => BinaryOp::Lt,
+            analyzer::ast::BinaryOp::Gt => BinaryOp::Gt,
+            analyzer::ast::BinaryOp::LtEq => BinaryOp::LtEq,
+            analyzer::ast::BinaryOp::GtEq => BinaryOp::GtEq,
+            analyzer::ast::BinaryOp::And => BinaryOp::And,
+            analyzer::ast::BinaryOp::Or => BinaryOp::Or,
         }
     }
 }
@@ -91,9 +85,9 @@ pub enum Expr<'src> {
     },
     Binary {
         op: BinaryOp,
+        ty: TypeKind<'src>,
         left: Box<Expr<'src>>,
         right: Box<Expr<'src>>,
-        ty: TypeKind<'src>,
     },
     // Unary operations
     Unary {
@@ -168,135 +162,80 @@ impl std::fmt::Display for TypeKind<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type<'src> {
-    pub span: Span<'src>,
     pub kind: TypeKind<'src>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param<'src> {
-    pub span: Span<'src>,
     pub name: Ident<'src>,
-    pub label_ignored: bool,
-    pub ty: Type<'src>,
+    pub ty: TypeKind<'src>,
     pub default: Option<Expr<'src>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Block<'src> {
-    pub span: Span<'src>,
     pub statements: Vec<Statement<'src>>,
-    pub ty: TypeKind<'src>,
-}
-
-// TODO: Do we need all these here. Should it not just be public or not
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Vis {
-    Public,
-    Internal,
-    Private,
-}
-
-impl From<parser::ast::Vis> for Vis {
-    fn from(value: parser::ast::Vis) -> Self {
-        match value {
-            parser::ast::Vis::Public => Vis::Public,
-            parser::ast::Vis::Internal => Vis::Internal,
-            parser::ast::Vis::Private => Vis::Private,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Function<'src> {
-    pub span: Span<'src>,
     pub name: String,
     pub params: Vec<Param<'src>>,
     pub ret_ty: TypeKind<'src>,
     pub body: Block<'src>,
-    pub vis: Vis,
-}
-
-impl<'src> Function<'src> {
-    pub fn set_vis(mut self, vis: Vis) -> Self {
-        self.vis = vis;
-        self
-    }
+    pub public: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant<'src> {
-    pub span: Span<'src>,
     pub name: Ident<'src>,
     pub fields: Vec<Type<'src>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Struct<'src> {
-    pub span: Span<'src>,
     pub name: Ident<'src>,
     pub fields: Vec<(Ident<'src>, Type<'src>)>,
-    pub vis: Vis,
+    pub public: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct Enum<'src> {
-    pub span: Span<'src>,
     pub name: Ident<'src>,
     pub variants: Vec<EnumVariant<'src>>,
-    pub vis: Vis,
+    pub public: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement<'src> {
     Let {
         name: Ident<'src>,
-        ty: TypeKind<'src>,
         expr: Expr<'src>,
         mutable: bool,
-        span: Span<'src>,
     },
     Assign {
         name: Ident<'src>,
         expr: Expr<'src>,
-        span: Span<'src>,
     },
     Return {
-        span: Span<'src>,
         expr: Option<Expr<'src>>,
-        ty: TypeKind<'src>,
     },
     Function(Function<'src>),
     Struct(Struct<'src>),
     Enum(Enum<'src>),
     Expr(Expr<'src>),
     ForLoop {
-        span: Span<'src>,
         cond: Option<Expr<'src>>,
         block: Block<'src>,
     },
-    Break {
-        span: Span<'src>,
-    },
-    Continue {
-        span: Span<'src>,
-    },
+    Break,
+    Continue,
 }
 
-impl<'src> Statement<'src> {
-    pub fn span(&'_ self) -> Span<'_> {
-        match self {
-            Statement::Let { span, .. } => *span,
-            Statement::Assign { span, .. } => *span,
-            Statement::Return { span, .. } => *span,
-            Statement::Function(function) => function.span,
-            Statement::Struct(s) => s.span,
-            Statement::Enum(e) => e.span,
-            Statement::Expr(_) => todo!(),
-            Statement::ForLoop { span, .. } => *span,
-            Statement::Break { span, .. } => *span,
-            Statement::Continue { span, .. } => *span,
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct UseImport<'src> {
+    pub module: Ident<'src>,
+    pub alias: Option<Ident<'src>>,
 }
 
 #[derive(Debug, Clone)]
@@ -304,4 +243,5 @@ pub enum Declaration<'src> {
     Struct(Struct<'src>),
     Enum(Enum<'src>),
     Function(Function<'src>),
+    Use { imports: Vec<UseImport<'src>> },
 }

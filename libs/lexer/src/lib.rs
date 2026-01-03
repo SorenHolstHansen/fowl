@@ -50,22 +50,24 @@ pub fn tokenize<'src>(source: &'src str, path: &'src Path) -> Lexer<'src> {
 
 #[cfg(test)]
 mod test {
+    use std::{path::PathBuf, str::FromStr};
+
     use super::*;
 
     #[test]
     fn test_lexer() {
-        let path = PathBuf::new("../../../examples/kitchen_sink.fo");
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo").unwrap();
         let source = include_str!("../../../examples/kitchen_sink.fo");
 
-        let mut lexer = tokenize(source, path);
+        let mut lexer = tokenize(source, &path);
 
         let mut previous = match lexer.next() {
-            Some(Ok(t)) => t,
-            Some(Err(e)) => panic!("Found lexer error {} {}", e.span, e.kind),
-            None => panic!("Unexpected end of lexer"),
+            Ok(t) => t,
+            Err(e) => panic!("Found lexer error {} {}", e.span, e.kind),
         };
 
-        for t in lexer {
+        loop {
+            let t = lexer.next();
             match t {
                 Ok(t) => {
                     assert!(

@@ -9,7 +9,9 @@ description = "A simple, explicit language"
 authors = ["Fowl contributors"]
 
 [dependencies]
+analyzer.workspace = true
 anyhow = { workspace = true }
+bir.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 codegen = { workspace = true }
 error = { workspace = true }
@@ -17,6 +19,5 @@ fowl_jsonc = { workspace = true }
 lexer = { workspace = true }
 parser = { workspace = true }
 span = { workspace = true }
-analyzer.workspace = true
 walkdir = "2.5.0"
 yansi = "1.0.1"

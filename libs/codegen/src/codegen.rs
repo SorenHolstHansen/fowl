@@ -1,5 +1,5 @@
-use analyzer::ast::{self, Program, TypeKind};
 use anyhow::bail;
+use bir::ast::{self, Program, TypeKind};
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{
     Context,
@@ -161,7 +161,7 @@ impl Compiler {
     fn declare_function(&mut self, function: &ast::Function) -> anyhow::Result<FuncId> {
         let mut param_types = vec![];
         for param in &function.params {
-            let ty = type_from_ast(&param.ty.kind, &self.module)?.expect("Can't use void here");
+            let ty = type_from_ast(&param.ty, &self.module)?.expect("Can't use void here");
             param_types.push(AbiParam::new(ty));
         }
 
@@ -247,7 +247,7 @@ impl<'a> FunctionCompiler<'a> {
             .params
             .iter()
             .map(|p| {
-                let ty = type_from_ast(&p.ty.kind, self.module).unwrap().unwrap();
+                let ty = type_from_ast(&p.ty, self.module).unwrap().unwrap();
                 AbiParam::new(ty)
             })
             .collect();
@@ -273,7 +273,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.seal_block(block0);
         for (i, param) in function.params.iter().enumerate() {
             let val = self.builder.block_params(block0)[i];
-            let ty = type_from_ast(&param.ty.kind, self.module)?.unwrap();
+            let ty = type_from_ast(&param.ty, self.module)?.unwrap();
             let var = self
                 .variables
                 .entry(param.name.inner.to_string())
@@ -467,7 +467,7 @@ impl<'a> FunctionCompiler<'a> {
                 ty,
                 cond,
                 then,
-                else_if_blocks,
+                else_if_blocks: _,
                 else_block: els,
             } => {
                 let cond_value = self.eval_expr(cond)?.unwrap();
@@ -640,11 +640,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.variables.insert(name.inner.to_string(), var);
                 Ok(false)
             }
-            ast::Statement::Assign {
-                name,
-                expr,
-                span: _,
-            } => {
+            ast::Statement::Assign { name, expr } => {
                 // Evaluate the expression first to get the new value
                 let value = self
                     .eval_expr(expr)?
@@ -673,7 +669,7 @@ impl<'a> FunctionCompiler<'a> {
                     Ok(true)
                 }
             },
-            ast::Statement::ForLoop { span, cond, block } => {
+            ast::Statement::ForLoop { cond, block } => {
                 let header_block = self.builder.create_block();
                 let body_block = self.builder.create_block();
                 let exit_block = self.builder.create_block();

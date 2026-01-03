@@ -91,6 +91,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bir"
+version = "0.1.0"
+dependencies = [
+ "analyzer",
+ "error",
+ "span",
+ "utils",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,8 +159,8 @@ checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 name = "codegen"
 version = "0.1.0"
 dependencies = [
- "analyzer",
  "anyhow",
+ "bir",
  "cranelift",
  "cranelift-codegen",
  "cranelift-module",
@@ -361,6 +371,7 @@ version = "0.1.0"
 dependencies = [
  "analyzer",
  "anyhow",
+ "bir",
  "clap",
  "codegen",
  "error",
