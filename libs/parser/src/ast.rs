@@ -161,6 +161,7 @@ pub enum ExprKind<'src> {
         fields: Vec<(Ident<'src>, Expr<'src>)>, // field name -> value
     },
     Member {
+        // TODO: this can possible be a type, i.e. MyType.new()
         object: Box<Expr<'src>>,
         field: Ident<'src>,
     },
@@ -239,6 +240,7 @@ pub enum Vis {
 #[derive(Debug, Clone)]
 pub struct Function<'src> {
     pub span: Span<'src>,
+    pub on: Option<Type<'src>>,
     pub name: Ident<'src>,
     pub params: Vec<Param<'src>>,
     pub ret_ty: Type<'src>,

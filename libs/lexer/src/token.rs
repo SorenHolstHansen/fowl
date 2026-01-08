@@ -49,6 +49,10 @@ pub enum TokenKind<'src> {
     Or,
     /// `mut` keyword
     Mut,
+    /// `on` keyword
+    On,
+    /// `self` keyword
+    Self_,
 
     // Types
     /// `int` type
@@ -179,6 +183,8 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::And => write!(f, "and"),
             TokenKind::Or => write!(f, "or"),
             TokenKind::Mut => write!(f, "mut"),
+            TokenKind::On => write!(f, "on"),
+            TokenKind::Self_ => write!(f, "self"),
             TokenKind::Int => write!(f, "int"),
             TokenKind::Float => write!(f, "float"),
             TokenKind::String => write!(f, "string"),

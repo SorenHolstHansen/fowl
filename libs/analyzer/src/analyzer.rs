@@ -27,6 +27,7 @@ pub fn analyzer<'src>(
     (analyzer.program, analyzer.errors)
 }
 
+#[derive(Debug)]
 struct TypecheckedDeclarations<'src>(HashMap<String, HashMap<String, a_ast::Declaration<'src>>>);
 
 impl<'src> TypecheckedDeclarations<'src> {
@@ -54,6 +55,7 @@ impl<'src> TypecheckedDeclarations<'src> {
     }
 }
 
+#[derive(Debug)]
 struct ContextNameMapping(HashMap<String, HashMap<String, String>>);
 
 impl ContextNameMapping {
@@ -128,9 +130,13 @@ impl<'src> Analyzer<'src> {
                 // to allow unordered definitions
                 let f = self.visit_function(&function)?;
                 let function_decl = a_ast::Declaration::Function(f);
+                let mut function_name = function.name.inner.to_string();
+                if let Some(on) = function.on {
+                    function_name = format!("{}.{function_name}", on.kind);
+                }
                 self.analyzered_declarations.insert(
                     &self.current_module_name,
-                    function.name.inner,
+                    &function_name,
                     &function_decl,
                 );
                 Ok(Some(function_decl))
@@ -188,7 +194,7 @@ impl<'src> Analyzer<'src> {
                     )
                     .with_error_label(param.span, "here"));
                 }
-            } else {
+            } else if param.name.inner != "self" {
                 has_labelled_param = true;
             };
             let ty = self.visit_type(&param.ty)?;
@@ -211,6 +217,7 @@ impl<'src> Analyzer<'src> {
 
         if self.current_module_name.starts_with("std.") && function.name.inner == "print" {
             Ok(a_ast::Function {
+                module_name: self.current_module_name.clone(),
                 span: function.span,
                 name: format!("{}.{}", self.current_module_name, function.name.inner),
                 params,
@@ -249,9 +256,18 @@ impl<'src> Analyzer<'src> {
             let name = if function.name.inner == "main" {
                 "main".to_string()
             } else {
-                format!("{}.{}", self.current_module_name, function.name.inner)
+                let mut temp = self.current_module_name.to_string();
+                if let Some(on) = function.on {
+                    // TODO: this might clash with module names, e.g. module.int with a function called foo, and module with a function called foo on int
+                    temp.push('.');
+                    temp.push_str(&on.kind.to_string());
+                }
+                temp.push('.');
+                temp.push_str(function.name.inner);
+                temp
             };
             Ok(a_ast::Function {
+                module_name: self.current_module_name.clone(),
                 span: function.span,
                 name,
                 params,
@@ -520,136 +536,278 @@ impl<'src> Analyzer<'src> {
                 })
             }
             parser_ast::ExprKind::Unary { .. } => todo!(),
-            parser_ast::ExprKind::Call(call) => match &call.callee.kind {
-                parser_ast::ExprKind::Ident(ident) => {
-                    let (decl, mapped) = if let Some(mapped) = self
-                        .context_name_mapping
-                        .get(&self.current_module_name, ident.inner)
-                    {
-                        let split = mapped.split(".").collect::<Vec<_>>();
-                        let last = split.last().unwrap();
-                        let module = &split[..(split.len() - 1)].join(".");
-                        let decl = self.analyzered_declarations.get(module, last).unwrap();
-                        (decl.clone(), mapped.to_string())
-                    } else if let Some(decl) = self
-                        .analyzered_declarations
-                        .get(&self.current_module_name, ident.inner)
-                    {
-                        (
-                            decl.clone(),
-                            format!("{}.{}", self.current_module_name, ident.inner),
-                        )
-                    } else {
-                        return Err(Diagnostic::error(
-                            call.callee.span,
-                            format!("Couldn't find '{}'", ident.inner),
-                        ));
-                    };
-                    let func = match decl {
-                        a_ast::Declaration::Function(function) => function,
-                        _ => todo!(),
-                    };
-                    // TODO: also check internal function are only used internally
-                    if let Vis::Private = func.vis {
-                        return Err(Diagnostic::error(call.callee.span, "Private function")
-                            .with_error_label(call.callee.span, "This function is private")
-                            .with_info_label(func.span, "Function defined here")
-                            .with_help("make the function `internal` or `public` to use it"));
-                    }
-                    let mut args = Vec::with_capacity(call.args.len());
-                    let ty = func.ret_ty;
-                    for (i, param) in func.params.iter().enumerate() {
-                        if param.label_ignored {
-                            // Use index
-                            let Some(arg) = &call.args.get(i) else {
-                                return Err(Diagnostic::error(
-                                    param.span,
-                                    "Missing argument for this parameter",
-                                )
-                                .with_error_label(param.span, "here")
-                                .with_error_label(call.callee.span, "missing arg here"));
-                            };
-                            if arg.label.is_some() {
-                                return Err(Diagnostic::error(
-                                    arg.span,
-                                    "Don't use a label on an anonymous label",
-                                )
-                                .with_error_label(arg.span, "here")
-                                .with_info_label(param.span, "param defined here"));
-                            }
-                            let expr = self.visit_expr(&arg.expr)?;
-                            args.push(expr);
+            parser_ast::ExprKind::Call(call) => {
+                match &call.callee.kind {
+                    parser_ast::ExprKind::Member { object, field } => {
+                        let expr = self.visit_expr(object)?;
+                        let ty = expr.ty();
+                        let function_name = format!("{}.{}", ty, field.inner);
+                        let (decl, mapped) = if let Some(mapped) = self
+                            .context_name_mapping
+                            .get(&self.current_module_name, &function_name)
+                        {
+                            let split = mapped.split(".").collect::<Vec<_>>();
+                            let last = split.last().unwrap();
+                            let module = &split[..(split.len() - 1)].join(".");
+                            let decl = self.analyzered_declarations.get(module, last).unwrap();
+                            (decl.clone(), mapped.to_string())
+                        } else if let Some(decl) = self
+                            .analyzered_declarations
+                            .get(&self.current_module_name, &function_name)
+                        {
+                            (
+                                decl.clone(),
+                                format!("{}.{}", self.current_module_name, function_name),
+                            )
                         } else {
-                            let found_arg = call
-                                .args
-                                .iter()
-                                .find(|arg| arg.label.map(|l| l.inner) == Some(param.name.inner));
-                            match found_arg {
-                                Some(arg) => args.push(self.visit_expr(&arg.expr)?),
-                                None => {
+                            return Err(Diagnostic::error(
+                                call.callee.span,
+                                format!("Couldn't find '{}'", function_name),
+                            ));
+                        };
+
+                        let func = match decl {
+                            a_ast::Declaration::Function(function) => function,
+                            _ => todo!(),
+                        };
+                        // TODO: also check internal function are only used internally
+                        if let Vis::Private = func.vis
+                            && func.module_name != self.current_module_name
+                        {
+                            return Err(Diagnostic::error(call.callee.span, "Private function")
+                                .with_error_label(field.span, "This function is private")
+                                .with_info_label(func.span, "Function defined here")
+                                .with_help("make the function `internal` or `public` to use it"));
+                        }
+                        let mut args: Vec<a_ast::Expr> = Vec::with_capacity(call.args.len());
+                        let ty = func.ret_ty;
+                        let mut param_iter = func.params.iter().enumerate();
+                        // Skip the "self"
+                        // TODO: Need to check if self is a param
+                        param_iter.next();
+                        // Add object as the first arg
+                        args.push(self.visit_expr(object)?);
+                        for (i, param) in param_iter {
+                            // Offset for self param
+                            let i = i - 1;
+                            if param.label_ignored {
+                                // Use index
+                                let Some(arg) = &call.args.get(i) else {
                                     return Err(Diagnostic::error(
                                         param.span,
-                                        "This parameter is not used",
+                                        "Missing argument for this parameter",
                                     )
                                     .with_error_label(param.span, "here")
-                                    .with_error_label(call.callee.span, "in this invocation"));
+                                    .with_error_label(field.span, "missing arg here"));
+                                };
+                                if arg.label.is_some() {
+                                    return Err(Diagnostic::error(
+                                        arg.span,
+                                        "Don't use a label on an anonymous label",
+                                    )
+                                    .with_error_label(arg.span, "here")
+                                    .with_info_label(param.span, "param defined here"));
+                                }
+                                let expr = self.visit_expr(&arg.expr)?;
+                                args.push(expr);
+                            } else {
+                                let found_arg = call.args.iter().find(|arg| {
+                                    arg.label.map(|l| l.inner) == Some(param.name.inner)
+                                });
+                                match found_arg {
+                                    Some(arg) => args.push(self.visit_expr(&arg.expr)?),
+                                    None => {
+                                        return Err(Diagnostic::error(
+                                            param.span,
+                                            "Unused parameter",
+                                        )
+                                        .with_error_label(param.span, "This parameter is not used")
+                                        .with_error_label(field.span, "in this invocation"));
+                                    }
                                 }
                             }
                         }
-                    }
-                    for (i, arg) in call.args.iter().enumerate() {
-                        match arg.label {
-                            Some(label) => {
-                                let param = func
-                                    .params
-                                    .iter()
-                                    .find(|param| param.name.inner == label.inner);
-                                match param {
-                                    Some(p) => {
-                                        if p.label_ignored {
-                                            return Err(Diagnostic::error(arg.span, "This is an anonymous param, but you gave it a label").with_error_label(arg.span, "here"));
+                        for (i, arg) in call.args.iter().enumerate() {
+                            let i = i + 1;
+                            match arg.label {
+                                Some(label) => {
+                                    let param = func
+                                        .params
+                                        .iter()
+                                        .find(|param| param.name.inner == label.inner);
+                                    match param {
+                                        Some(p) => {
+                                            if p.label_ignored {
+                                                return Err(Diagnostic::error(arg.span, "This is an anonymous param, but you gave it a label").with_error_label(arg.span, "here"));
+                                            }
+                                        }
+                                        None => {
+                                            return Err(Diagnostic::error(
+                                                arg.span,
+                                                "could not find this param",
+                                            )
+                                            .with_error_label(arg.span, "here"));
+                                        }
+                                    }
+                                }
+                                None => match func.params.get(i) {
+                                    Some(param) => {
+                                        if !param.label_ignored {
+                                            return Err(Diagnostic::error(
+                                        arg.span,
+                                        "The corresponding function parameter expects a label, but not used",
+                                    )
+                                    .with_error_label(arg.span, "here"));
                                         }
                                     }
                                     None => {
                                         return Err(Diagnostic::error(
                                             arg.span,
-                                            "could not find this param",
+                                            "No param matches this arg, out of bounds",
                                         )
                                         .with_error_label(arg.span, "here"));
                                     }
+                                },
+                            }
+                        }
+                        // TODO: verify call matches the signature of the function
+                        Ok(a_ast::Expr::Call {
+                            ty,
+                            call: a_ast::Call {
+                                callee: mapped.to_string(),
+                                args,
+                            },
+                        })
+                    }
+                    parser_ast::ExprKind::Ident(ident) => {
+                        let (decl, mapped) = if let Some(mapped) = self
+                            .context_name_mapping
+                            .get(&self.current_module_name, ident.inner)
+                        {
+                            let split = mapped.split(".").collect::<Vec<_>>();
+                            let last = split.last().unwrap();
+                            let module = &split[..(split.len() - 1)].join(".");
+                            let decl = self.analyzered_declarations.get(module, last).unwrap();
+                            (decl.clone(), mapped.to_string())
+                        } else if let Some(decl) = self
+                            .analyzered_declarations
+                            .get(&self.current_module_name, ident.inner)
+                        {
+                            (
+                                decl.clone(),
+                                format!("{}.{}", self.current_module_name, ident.inner),
+                            )
+                        } else {
+                            return Err(Diagnostic::error(
+                                call.callee.span,
+                                format!("Couldn't find '{}'", ident.inner),
+                            ));
+                        };
+                        let func = match decl {
+                            a_ast::Declaration::Function(function) => function,
+                            _ => todo!(),
+                        };
+                        // TODO: also check internal function are only used internally
+                        if let Vis::Private = func.vis {
+                            return Err(Diagnostic::error(call.callee.span, "Private function")
+                                .with_error_label(call.callee.span, "This function is private")
+                                .with_info_label(func.span, "Function defined here")
+                                .with_help("make the function `internal` or `public` to use it"));
+                        }
+                        let mut args = Vec::with_capacity(call.args.len());
+                        let ty = func.ret_ty;
+                        for (i, param) in func.params.iter().enumerate() {
+                            if param.label_ignored {
+                                // Use index
+                                let Some(arg) = &call.args.get(i) else {
+                                    return Err(Diagnostic::error(
+                                        param.span,
+                                        "Missing argument for this parameter",
+                                    )
+                                    .with_error_label(param.span, "here")
+                                    .with_error_label(call.callee.span, "missing arg here"));
+                                };
+                                if arg.label.is_some() {
+                                    return Err(Diagnostic::error(
+                                        arg.span,
+                                        "Don't use a label on an anonymous label",
+                                    )
+                                    .with_error_label(arg.span, "here")
+                                    .with_info_label(param.span, "param defined here"));
+                                }
+                                let expr = self.visit_expr(&arg.expr)?;
+                                args.push(expr);
+                            } else {
+                                let found_arg = call.args.iter().find(|arg| {
+                                    arg.label.map(|l| l.inner) == Some(param.name.inner)
+                                });
+                                match found_arg {
+                                    Some(arg) => args.push(self.visit_expr(&arg.expr)?),
+                                    None => {
+                                        return Err(Diagnostic::error(
+                                            param.span,
+                                            "This parameter is not used",
+                                        )
+                                        .with_error_label(param.span, "here")
+                                        .with_error_label(call.callee.span, "in this invocation"));
+                                    }
                                 }
                             }
-                            None => match func.params.get(i) {
-                                Some(param) => {
-                                    if !param.label_ignored {
-                                        return Err(Diagnostic::error(
+                        }
+                        for (i, arg) in call.args.iter().enumerate() {
+                            match arg.label {
+                                Some(label) => {
+                                    let param = func
+                                        .params
+                                        .iter()
+                                        .find(|param| param.name.inner == label.inner);
+                                    match param {
+                                        Some(p) => {
+                                            if p.label_ignored {
+                                                return Err(Diagnostic::error(arg.span, "This is an anonymous param, but you gave it a label").with_error_label(arg.span, "here"));
+                                            }
+                                        }
+                                        None => {
+                                            return Err(Diagnostic::error(
+                                                arg.span,
+                                                "could not find this param",
+                                            )
+                                            .with_error_label(arg.span, "here"));
+                                        }
+                                    }
+                                }
+                                None => match func.params.get(i) {
+                                    Some(param) => {
+                                        if !param.label_ignored {
+                                            return Err(Diagnostic::error(
                                         arg.span,
                                         "The corresponding function parameter expects a label, but not used",
                                     )
                                     .with_error_label(arg.span, "here"));
+                                        }
                                     }
-                                }
-                                None => {
-                                    return Err(Diagnostic::error(
-                                        arg.span,
-                                        "No param matches this arg, out of bounds",
-                                    )
-                                    .with_error_label(arg.span, "here"));
-                                }
-                            },
+                                    None => {
+                                        return Err(Diagnostic::error(
+                                            arg.span,
+                                            "No param matches this arg, out of bounds",
+                                        )
+                                        .with_error_label(arg.span, "here"));
+                                    }
+                                },
+                            }
                         }
+                        // TODO: verify call matches the signature of the function
+                        Ok(a_ast::Expr::Call {
+                            ty,
+                            call: a_ast::Call {
+                                callee: mapped.to_string(),
+                                args,
+                            },
+                        })
                     }
-                    // TODO: verify call matches the signature of the function
-                    Ok(a_ast::Expr::Call {
-                        ty,
-                        call: a_ast::Call {
-                            callee: mapped.to_string(),
-                            args,
-                        },
-                    })
+                    x => todo!("Not implemented {x:?}"),
                 }
-                _ => todo!(),
-            },
+            }
             parser_ast::ExprKind::StructInstance { .. } => todo!(),
             parser_ast::ExprKind::Member { .. } => todo!(),
             parser_ast::ExprKind::If {

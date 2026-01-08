@@ -208,6 +208,7 @@ impl From<parser::ast::Vis> for Vis {
 
 #[derive(Debug, Clone)]
 pub struct Function<'src> {
+    pub module_name: String,
     pub span: Span<'src>,
     pub name: String,
     pub params: Vec<Param<'src>>,

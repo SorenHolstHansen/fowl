@@ -3,6 +3,7 @@ pub struct Program<'src> {
     pub declarations: Vec<Declaration<'src>>,
 }
 
+// TODO: Consider having a top-level Ident, rather than one per ast
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ident<'src> {
     pub inner: &'src str,

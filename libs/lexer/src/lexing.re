@@ -22,7 +22,7 @@ impl<'src> Lexer<'src> {
             }
         }
         if let Some(forced) = self.force_next_token.take() {
-            return forced;
+            return Ok(forced);
         }
 
         if self.eof { return self.error(LexerErrorKind::EofReached); }
@@ -67,6 +67,8 @@ impl<'src> Lexer<'src> {
         <INIT> "and"                   { return self.token(TokenKind::And) }
         <INIT> "or"                    { return self.token(TokenKind::Or) }
         <INIT> "mut"                   { return self.token(TokenKind::Mut) }
+        <INIT> "on"                    { return self.token(TokenKind::On) }
+        <INIT> "self"                    { return self.token(TokenKind::Self_) }
 
         // Types
 		<INIT> "int"                   { return self.token(TokenKind::Int) }
@@ -101,7 +103,7 @@ impl<'src> Lexer<'src> {
         <INIT> "true"                  { return self.token(TokenKind::BoolLiteral(true)) }
         <INIT> "false"                 { return self.token(TokenKind::BoolLiteral(false)) }
         <INIT> [+-]?[0-9]+             { return self.int() }
-        <INIT> [+-]?[0-9]+ "." [0-9]*  { return self.float() }
+        <INIT> [+-]?[0-9]+ "." [0-9]+  { return self.float() }
 
         // Strings
         <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }

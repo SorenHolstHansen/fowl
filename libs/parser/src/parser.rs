@@ -393,12 +393,22 @@ impl<'src> Parser<'src> {
         let t = self.next_token();
         let mut function_span = t.span;
 
+        let peeked = self.peek_token();
+        let on = match peeked.kind {
+            TokenKind::On => {
+                self.next_token();
+                let ty = self.parse_type()?;
+                Some(ty)
+            }
+            _ => None,
+        };
+
         let name = self.parse_ident().map_err(|e| {
             e.with_help("Expected function name")
                 .with_note("try giving the function a name: `fn my_function() ...`")
         })?;
 
-        let params = self.parse_function_parameters()?;
+        let params = self.parse_function_parameters(on)?;
 
         let ret_ty = self
             .parse_type()
@@ -422,6 +432,7 @@ impl<'src> Parser<'src> {
 
         Ok(Function {
             span: function_span,
+            on,
             name,
             ret_ty,
             params,
@@ -430,7 +441,10 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn parse_function_parameters(&mut self) -> Result<Vec<Param<'src>>, Diagnostic<'src>> {
+    fn parse_function_parameters(
+        &mut self,
+        function_on: Option<Type<'src>>,
+    ) -> Result<Vec<Param<'src>>, Diagnostic<'src>> {
         self.expect_token(TokenKind::LParen)?;
         let mut parameters = Vec::new();
 
@@ -444,6 +458,35 @@ impl<'src> Parser<'src> {
             // immediate parameter list end
             self.next_token();
             return Ok(parameters);
+        }
+
+        // The first param is allowed to be a `self`
+        let peeked = self.peek_token();
+        let peeked_span = peeked.span;
+        if peeked.kind == TokenKind::Self_ {
+            self.next_token();
+            let Some(function_on) = function_on else {
+                return Err(Diagnostic::error(
+                    peeked_span,
+                    "Function can only accept a `self` parameter if it is a funciton on a type",
+                )
+                .with_error_label(
+                    peeked_span,
+                    "Function can only accept a `self` parameter if it is a funciton on a type",
+                )
+                .with_help("Consider making this a function on some type: `fn on MyType ...`"));
+            };
+            self.expect_token(TokenKind::Comma)?;
+            parameters.push(Param {
+                span: peeked_span,
+                name: Ident {
+                    inner: "self",
+                    span: peeked_span,
+                },
+                label_ignored: false,
+                ty: function_on,
+                default: None,
+            });
         }
 
         loop {
@@ -849,6 +892,13 @@ impl<'src> Parser<'src> {
 
                 lhs
             }
+            TokenKind::Self_ => Expr {
+                kind: ExprKind::Ident(Ident {
+                    inner: "self",
+                    span: expr_span,
+                }),
+                span: expr_span,
+            },
             t => {
                 return Err(
                     Diagnostic::error(expr_span, format!("Unexpected token '{}'", t))

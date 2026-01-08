@@ -19,7 +19,7 @@ pub struct Lexer<'src> {
     pub(crate) interpolation_depth: usize,
     pub(crate) eof: bool,
     pub(crate) peek_queue: VecDeque<Result<Token<'src>, LexerError<'src>>>,
-    pub(crate) force_next_token: Option<Result<Token<'src>, LexerError<'src>>>,
+    pub(crate) force_next_token: Option<Token<'src>>,
 }
 
 impl<'src> Lexer<'src> {
@@ -115,10 +115,10 @@ impl<'src> Lexer<'src> {
                 | TokenKind::RParen
                 | TokenKind::RBrace
                 | TokenKind::RBracket => {
-                    self.force_next_token = Some(Ok(Token {
+                    self.force_next_token = Some(Token {
                         kind: TokenKind::Semicolon,
                         span: Span::new(self.cursor, self.cursor + 1, self.path, self.input),
-                    }))
+                    })
                 }
                 _ => {}
             }

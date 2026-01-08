@@ -1,8 +1,12 @@
 use simple.utils.diff
 use std.io.println
 
+fn on int sub(self, _ other: int) int {
+	return self - other
+}
+
 fn main() void {
-	let d = diff(1, 2)
+	let d = 2.sub(1)
 
 	println("diff = {d}")
 }
