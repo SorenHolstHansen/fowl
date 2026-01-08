@@ -55,10 +55,11 @@ Let's take for instance how to manage a DB connection. It is very common to acqu
 - Swift: I like named parameters, and that you can use `_` to make them positional. Not sure I want argument labels.
 - Swift: I like the compile time check for API availbility for a given target.
 - Python: I like list comprehension.
-- Elixir/erlang: Atoms is an interesting idea. Sort of like it, but feels like they need it since they don't have types.
+- Elixir/erlang: Atoms is an interesting idea. Sort of like it, but feels like they need it since they don't have enums/types.
 - Consider dropping if else and go with just match like gleam. Keeps the lang simpler perhaps?
 
 ## Quickfire language features and things that should be possible / nice in the language
+Things that are not mentioned above mostly
 
 - `Drop`-like feature (perhaps `Descope`), that would make it simple to e.g. ROLLBACK a transaction if you forget it. Maybe this has something to do with the below point
 - Move semantics of some kind. For instance, giving a transaction to a spawned task should move it into that task, in the sense that the type-system should tell the user that the current scope can no longer use it. Also for something like response bodies, where consuming it twice is a logic error.
@@ -69,3 +70,7 @@ Let's take for instance how to manage a DB connection. It is very common to acqu
 - sqlx-like typesafe sql queries
 - Simple generation of openapi schema without all the boilerplate
 - Simple serialization story
+- Operator overloading, is that what it's called. e.g. defining `+` for some type
+- Perhaps loops as blocks that return new iterators, e.g. `let a = for i in 0..3 { 2 * i }; // a = [0, 2, 4]`
+- Configurable garbage collection? Different strategies might work better for certain tasks
+- Compiler should know if a closure is mut, so that task.spawn can't take mutable closures.
