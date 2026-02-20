@@ -69,8 +69,17 @@ Things that are not mentioned above mostly
 - Remote debugging?
 - sqlx-like typesafe sql queries
 - Simple generation of openapi schema without all the boilerplate
-- Simple serialization story
+- Simple serialization experience
 - Operator overloading, is that what it's called. e.g. defining `+` for some type
-- Perhaps loops as blocks that return new iterators, e.g. `let a = for i in 0..3 { 2 * i }; // a = [0, 2, 4]`
+- Perhaps loops as blocks that return new iterators, e.g. `let a = for i in range(0, 3) { 2 * i }; // a = [0, 2, 4]`
 - Configurable garbage collection? Different strategies might work better for certain tasks
 - Compiler should know if a closure is mut, so that task.spawn can't take mutable closures.
+- Extendable linting by libs.
+- Hard to go wrong for juniors, easy to do right for seniors.
+- Excellent debugging experience
+- Very nice in production
+
+## Interesting blog posts
+
+- [Language Design: Stop Using <> for Generics](https://soc.me/languages/stop-using-angle-brackets-for-generics)
+- Language Design: Unified Condition Expressions: https://soc.me/languages/unified-condition-expressions and https://soc.me/languages/unified-condition-expressions-implementation
