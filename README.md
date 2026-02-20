@@ -109,8 +109,10 @@ fn main() {
 
 /*
 # TASKS
-Tasks are like in elixir. You don't need to add an `async` keyword to your functions, everything is basically async.
-However tasks have some rules. You can't pass mutable functions to tasks, since tasks should not mutate shared data.
+Tasks are like in elixir.
+You don't need to add an `async` keyword to your functions, everything is basically async.
+However tasks have some rules.
+You can't pass mutable functions to tasks, since tasks should not mutate shared data.
 They communicate with other processes by sharing messages.
 Think of tasks like actors
 */
