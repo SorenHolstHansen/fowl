@@ -12,7 +12,8 @@ use std.io.println
 
 fn main() void {
 	let scalar = 2
-	let scale = fn(x: int) int { return scalar * x }
+	let a = 4
+	let scale = fn(x: int) int { return scalar * x + a }
 
 	println("diff = {scale(21)}")
 }

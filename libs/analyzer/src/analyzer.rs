@@ -331,7 +331,6 @@ impl<'src> Analyzer<'src> {
                         name_span: name.span,
                     },
                 );
-                dbg!(&self.scope);
                 Ok(a_ast::Statement::Let {
                     name,
                     ty,

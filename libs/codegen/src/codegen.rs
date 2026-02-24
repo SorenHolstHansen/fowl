@@ -2,7 +2,7 @@ use bir::ast::{self, Program, TypeKind};
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{
     Context,
-    ir::{BlockArg, Type},
+    ir::{BlockArg, MemFlags, StackSlotData, StackSlotKind, Type},
 };
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
@@ -118,12 +118,24 @@ impl Compiler {
 
         self.declare_c_functions();
 
-        // First, declare all functions (without bodies)
+        // Declare all top-level functions
         for function in &functions {
             self.declare_function(function);
         }
 
-        // Then, lower the bodies of all functions
+        // Collect all closures from the program and declare their trampolines
+        let closures = collect_closures_in_program(program);
+        for closure in &closures {
+            self.declare_trampoline(closure);
+        }
+
+        // Compile all closure trampolines (must happen before outer function bodies
+        // so the trampolines are defined when outer functions reference them)
+        for closure in &closures {
+            self.compile_trampoline(closure);
+        }
+
+        // Then, lower the bodies of all top-level functions
         for function in &functions {
             self.lower_function_body(function);
         }
@@ -175,7 +187,7 @@ impl Compiler {
         self.module
             .declare_function(
                 &function.name,
-                if function.public {
+                if function.public || function.name == "main" {
                     Linkage::Export
                 } else {
                     Linkage::Local
@@ -184,6 +196,66 @@ impl Compiler {
             )
             .unwrap()
     }
+
+    /// Declare a trampoline function for a closure.
+    /// The trampoline signature is (env_ptr: *void, ...closure_params) -> ret_ty
+    fn declare_trampoline(&mut self, closure: &ClosureIR) {
+        let ptr_ty = self.module.target_config().pointer_type();
+        let call_conv = self.isa.default_call_conv();
+
+        let mut params = vec![AbiParam::new(ptr_ty)]; // env_ptr
+        for p in &closure.params {
+            if let Some(ty) = type_from_ast(&p.ty, &self.module) {
+                params.push(AbiParam::new(ty));
+            }
+        }
+        let returns = type_from_ast(&closure.ret_ty, &self.module)
+            .map(|t| vec![AbiParam::new(t)])
+            .unwrap_or_default();
+
+        let sig = Signature {
+            call_conv,
+            params,
+            returns,
+        };
+        let trampoline_name = trampoline_name(&closure.mangled_name);
+        self.module
+            .declare_function(&trampoline_name, Linkage::Local, &sig)
+            .unwrap();
+    }
+
+    /// Compile the body of a closure trampoline.
+    fn compile_trampoline(&mut self, closure: &ClosureIR) {
+        let trampoline_name = trampoline_name(&closure.mangled_name);
+        let func_id = match self
+            .module
+            .declarations()
+            .get_name(&trampoline_name)
+            .unwrap()
+        {
+            cranelift_module::FuncOrDataId::Func(id) => id,
+            cranelift_module::FuncOrDataId::Data(_) => panic!("Trampoline is not a function"),
+        };
+
+        let mut fc = FunctionCompiler::new(
+            &mut self.ctx,
+            &mut self.fctx,
+            self.isa.clone(),
+            &mut self.module,
+        );
+        fc.compile_trampoline_body(closure);
+        fc.finalize();
+
+        self.module.define_function(func_id, &mut self.ctx).unwrap();
+
+        println!("{}:\n{}", trampoline_name, self.ctx.func);
+
+        self.ctx.clear();
+    }
+}
+
+fn trampoline_name(mangled_name: &str) -> String {
+    format!("{mangled_name}__trampoline")
 }
 
 fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> Option<Type> {
@@ -194,7 +266,103 @@ fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> Option<Type> 
         ast::TypeKind::String => Some(module.target_config().pointer_type()),
         ast::TypeKind::Bool => Some(types::I8),
         ast::TypeKind::Void => None,
-        ast::TypeKind::Fn(params, ret_ty) => todo!(),
+        // Closures are represented as pointers to a { fn_ptr, env_ptr } struct
+        ast::TypeKind::Fn(_, _) => Some(module.target_config().pointer_type()),
+    }
+}
+
+/// Data needed to compile a closure trampoline.
+struct ClosureIR<'src> {
+    mangled_name: String,
+    captures: Vec<(String, ast::TypeKind<'src>)>,
+    params: Vec<ast::Param<'src>>,
+    ret_ty: ast::TypeKind<'src>,
+    body: ast::Block<'src>,
+}
+
+fn collect_closures_in_program<'src>(program: &'src Program<'src>) -> Vec<ClosureIR<'src>> {
+    let mut closures = Vec::new();
+    for decl in &program.declarations {
+        if let ast::Declaration::Function(func) = decl {
+            collect_closures_in_block(&func.body, &mut closures);
+        }
+    }
+    closures
+}
+
+fn collect_closures_in_block<'src>(block: &'src ast::Block<'src>, out: &mut Vec<ClosureIR<'src>>) {
+    for stmt in &block.statements {
+        collect_closures_in_statement(stmt, out);
+    }
+}
+
+fn collect_closures_in_statement<'src>(
+    stmt: &'src ast::Statement<'src>,
+    out: &mut Vec<ClosureIR<'src>>,
+) {
+    match stmt {
+        ast::Statement::Let { expr, .. } | ast::Statement::Assign { expr, .. } => {
+            collect_closures_in_expr(expr, out)
+        }
+        ast::Statement::Return {
+            expr: Some(expr), ..
+        } => collect_closures_in_expr(expr, out),
+        ast::Statement::Expr(expr) => collect_closures_in_expr(expr, out),
+        ast::Statement::ForLoop { cond, block } => {
+            if let Some(cond) = cond {
+                collect_closures_in_expr(cond, out);
+            }
+            collect_closures_in_block(block, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_closures_in_expr<'src>(expr: &'src ast::Expr<'src>, out: &mut Vec<ClosureIR<'src>>) {
+    match expr {
+        ast::Expr::Closure {
+            mangled_name,
+            captures,
+            params,
+            ret_ty,
+            body,
+        } => {
+            out.push(ClosureIR {
+                mangled_name: mangled_name.clone(),
+                captures: captures.clone(),
+                params: params.clone(),
+                ret_ty: ret_ty.clone(),
+                body: body.clone(),
+            });
+            collect_closures_in_block(body, out);
+        }
+        ast::Expr::Call { call, .. } => {
+            for arg in &call.args {
+                collect_closures_in_expr(arg, out);
+            }
+        }
+        ast::Expr::Binary { left, right, .. } => {
+            collect_closures_in_expr(left, out);
+            collect_closures_in_expr(right, out);
+        }
+        ast::Expr::StringInterpolation(parts) => {
+            for part in parts {
+                collect_closures_in_expr(part, out);
+            }
+        }
+        ast::Expr::If {
+            cond,
+            then,
+            else_block,
+            ..
+        } => {
+            collect_closures_in_expr(cond, out);
+            collect_closures_in_block(then, out);
+            if let Some(els) = else_block {
+                collect_closures_in_block(els, out);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -350,11 +518,149 @@ impl<'a> FunctionCompiler<'a> {
         };
     }
 
+    /// Compile the body of a closure trampoline.
+    /// The trampoline loads captures from env_ptr and then runs the closure body.
+    fn compile_trampoline_body(&mut self, closure: &ClosureIR) {
+        let ptr_ty = self.module.target_config().pointer_type();
+        let ptr_size = ptr_ty.bytes() as i32;
+        let call_conv = self.isa.default_call_conv();
+
+        // Signature: (env_ptr: ptr, ...closure_params) -> ret_ty
+        let mut params = vec![AbiParam::new(ptr_ty)];
+        for p in &closure.params {
+            if let Some(ty) = type_from_ast(&p.ty, self.module) {
+                params.push(AbiParam::new(ty));
+            }
+        }
+        let returns = type_from_ast(&closure.ret_ty, self.module)
+            .map(|t| vec![AbiParam::new(t)])
+            .unwrap_or_default();
+
+        self.builder.func.signature = Signature {
+            call_conv,
+            params,
+            returns,
+        };
+
+        let block0 = self.builder.create_block();
+        self.builder.append_block_params_for_function_params(block0);
+        self.builder.switch_to_block(block0);
+        self.builder.seal_block(block0);
+
+        // env_ptr is block_params[0]
+        let env_ptr = self.builder.block_params(block0)[0];
+
+        // Set up closure params as variables (block_params[1..])
+        for (i, param) in closure.params.iter().enumerate() {
+            if let Some(ty) = type_from_ast(&param.ty, self.module) {
+                let val = self.builder.block_params(block0)[i + 1];
+                let var = self.builder.declare_var(ty);
+                self.builder.def_var(var, val);
+                self.variables.insert(param.name.inner.to_string(), var);
+            }
+        }
+
+        // Load captures from env_ptr at successive pointer-sized offsets
+        for (i, (name, ty)) in closure.captures.iter().enumerate() {
+            if let Some(cl_ty) = type_from_ast(ty, self.module) {
+                let offset = (i as i32) * ptr_size;
+                let val = self
+                    .builder
+                    .ins()
+                    .load(cl_ty, MemFlags::new(), env_ptr, offset);
+                let var = self.builder.declare_var(cl_ty);
+                self.builder.def_var(var, val);
+                self.variables.insert(name.clone(), var);
+            }
+        }
+
+        // Compile the closure body (same pattern as regular function body)
+        let statements = &closure.body.statements;
+        if statements.is_empty() {
+            self.builder.ins().return_(&[]);
+        } else {
+            for stmt in &statements[..statements.len() - 1] {
+                self.lower_statement(stmt);
+            }
+            let last_stmt = statements.last().unwrap();
+            match last_stmt {
+                ast::Statement::Return { .. } => {
+                    self.lower_statement(last_stmt);
+                }
+                ast::Statement::Expr(expr) if !self.builder.func.signature.returns.is_empty() => {
+                    let ret_val = self
+                        .eval_expr(expr)
+                        .expect("Non-void closure must return a value");
+                    self.builder.ins().return_(&[ret_val]);
+                }
+                _ => {
+                    self.lower_statement(last_stmt);
+                    if self.builder.func.signature.returns.is_empty() {
+                        self.builder.ins().return_(&[]);
+                    }
+                }
+            }
+        }
+
+        if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
+            panic!(
+                "Trampoline '{}' failed verification:\n{err}",
+                closure.mangled_name
+            );
+        }
+    }
+
     fn finalize(self) {
         self.builder.finalize();
     }
 
-    fn eval_call(&mut self, call: &ast::Call) -> Option<Value> {
+    fn eval_call(&mut self, call: &ast::Call, ret_ty: &ast::TypeKind) -> Option<Value> {
+        // If the callee name is a local variable, it's a closure call.
+        if let Some(&closure_var) = self.variables.get(&call.callee) {
+            let ptr_ty = self.module.target_config().pointer_type();
+            let ptr_size = ptr_ty.bytes() as i32;
+
+            // The variable holds a pointer to { fn_ptr, env_ptr }
+            let closure_ptr = self.builder.use_var(closure_var);
+            let fn_ptr = self
+                .builder
+                .ins()
+                .load(ptr_ty, MemFlags::new(), closure_ptr, 0);
+            let env_ptr = self
+                .builder
+                .ins()
+                .load(ptr_ty, MemFlags::new(), closure_ptr, ptr_size);
+
+            // Evaluate arguments
+            let mut args = vec![env_ptr];
+            for arg in &call.args {
+                args.push(self.eval_expr(arg).expect("void arg to closure"));
+            }
+
+            // Build the indirect call signature
+            let call_conv = self.isa.default_call_conv();
+            let mut sig_params = vec![AbiParam::new(ptr_ty)]; // env_ptr
+            for arg in &call.args {
+                if let Some(ty) = type_from_ast(arg.ty(), self.module) {
+                    sig_params.push(AbiParam::new(ty));
+                }
+            }
+            let returns = type_from_ast(ret_ty, self.module)
+                .map(|t| vec![AbiParam::new(t)])
+                .unwrap_or_default();
+
+            let sig = self.builder.import_signature(Signature {
+                call_conv,
+                params: sig_params,
+                returns,
+            });
+
+            let inst = self.builder.ins().call_indirect(sig, fn_ptr, &args);
+            let results = self.builder.inst_results(inst);
+            return results.first().cloned();
+        }
+
+        // Regular (module-level) function call
         let func_id = match self.module.declarations().get_name(&call.callee).unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -456,7 +762,7 @@ impl<'a> FunctionCompiler<'a> {
                 }
             }
             ast::Expr::Unary { .. } => todo!(),
-            ast::Expr::Call { call, .. } => self.eval_call(call),
+            ast::Expr::Call { call, ty } => self.eval_call(call, ty),
             ast::Expr::StructInstance { .. } => todo!(),
             ast::Expr::Member { .. } => todo!(),
             ast::Expr::If {
@@ -552,36 +858,58 @@ impl<'a> FunctionCompiler<'a> {
             }
             ast::Expr::Closure {
                 mangled_name,
-                params,
-                ret_ty,
-                body,
+                captures,
+                ..
             } => {
-                let call_conv = self.isa.default_call_conv();
-                let sig = Signature {
-                    call_conv,
-                    params: params
-                        .iter()
-                        .map(|param| {
-                            AbiParam::new(
-                                type_from_ast(&param.ty, self.module)
-                                    .expect("Analyzer should have checked that this is not-null"),
-                            )
-                        })
-                        .collect(),
-                    returns: type_from_ast(ret_ty, self.module)
-                        .map(|t| vec![AbiParam::new(t)])
-                        .unwrap_or_default(),
+                let ptr_ty = self.module.target_config().pointer_type();
+                let ptr_size = ptr_ty.bytes();
+
+                // Resolve the pre-compiled trampoline
+                let t_name = trampoline_name(mangled_name);
+                let trampoline_id = match self.module.declarations().get_name(&t_name).unwrap() {
+                    cranelift_module::FuncOrDataId::Func(id) => id,
+                    _ => panic!("Trampoline not found: {t_name}"),
+                };
+                let trampoline_ref = self
+                    .module
+                    .declare_func_in_func(trampoline_id, self.builder.func);
+                let fn_ptr = self.builder.ins().func_addr(ptr_ty, trampoline_ref);
+
+                // Allocate capture struct on the stack and store each captured value
+                let env_ptr = if captures.is_empty() {
+                    // No captures — pass a null pointer as env
+                    self.builder.ins().iconst(ptr_ty, 0)
+                } else {
+                    let capture_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        captures.len() as u32 * ptr_size,
+                        0,
+                    ));
+                    for (i, (name, _ty)) in captures.iter().enumerate() {
+                        let var = *self
+                            .variables
+                            .get(name)
+                            .unwrap_or_else(|| panic!("Captured variable '{name}' not found"));
+                        let val = self.builder.use_var(var);
+                        let offset = (i as u32 * ptr_size) as i32;
+                        self.builder.ins().stack_store(val, capture_slot, offset);
+                    }
+                    self.builder.ins().stack_addr(ptr_ty, capture_slot, 0)
                 };
 
-                self.module
-                    .declare_function(mangled_name, Linkage::Local, &sig)
-                    .unwrap();
+                // Allocate closure struct { fn_ptr, env_ptr } on the stack
+                let closure_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    2 * ptr_size,
+                    0,
+                ));
+                self.builder.ins().stack_store(fn_ptr, closure_slot, 0);
+                self.builder
+                    .ins()
+                    .stack_store(env_ptr, closure_slot, ptr_size as i32);
 
-                // Construct the closure
-
-                // Define the function
-
-                todo!()
+                let closure_ptr = self.builder.ins().stack_addr(ptr_ty, closure_slot, 0);
+                Some(closure_ptr)
             }
         }
     }
@@ -658,13 +986,10 @@ impl<'a> FunctionCompiler<'a> {
             ast::Statement::Let { name, expr, .. } => {
                 let value = self
                     .eval_expr(expr)
-                    .expect("This should exist. Probably didn't analyzer for void");
-                // let ty = type_from_ast(&ty.clone().expect("This can't be void"), &self.module)?
-                //     .expect("This can't be void");
-                let var = self.builder.declare_var(
-                    // TODO: get the type from type-checking, or look it up some place
-                    types::I64,
-                );
+                    .expect("This should exist. Probably didn't analyze for void");
+                // Use the actual type of the produced value (handles closures, ints, pointers, etc.)
+                let value_type = self.builder.func.dfg.value_type(value);
+                let var = self.builder.declare_var(value_type);
                 self.builder.def_var(var, value);
                 self.variables.insert(name.inner.to_string(), var);
                 false
@@ -816,7 +1141,15 @@ pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptio
     cc.arg(&object_path).arg(runtime_o).arg("-o").arg(output);
 
     match cc.output() {
-        Ok(_) => {}
+        Ok(output) => {
+            if !output.status.success() {
+                eprintln!(
+                    "LINKING ERROR:\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                panic!("linker failed");
+            }
+        }
         Err(e) => {
             println!("LINKING ERROR {e:?}");
             panic!()

@@ -123,6 +123,8 @@ pub enum Expr<'src> {
         params: Vec<Param<'src>>,
         ret_ty: TypeKind<'src>,
         body: Block<'src>,
+        /// Variables captured from the enclosing scope: (name, type)
+        captures: Vec<(String, TypeKind<'src>)>,
     },
 }
 
