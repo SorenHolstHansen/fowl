@@ -136,6 +136,13 @@ pub struct Call<'src> {
 }
 
 #[derive(Debug, Clone)]
+pub struct Closure<'src> {
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: Type<'src>,
+    pub body: Block<'src>,
+}
+
+#[derive(Debug, Clone)]
 pub enum ExprKind<'src> {
     IntLiteral(i64),
     FloatLiteral(f64),
@@ -171,6 +178,7 @@ pub enum ExprKind<'src> {
         else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
         else_block: Option<Block<'src>>,
     },
+    Closure(Closure<'src>),
 }
 
 #[derive(Debug, Clone)]
@@ -336,6 +344,7 @@ pub struct Use<'src> {
     pub span: Span<'src>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Declaration<'src> {
     Struct(Struct<'src>),

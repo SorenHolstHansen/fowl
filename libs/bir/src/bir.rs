@@ -47,6 +47,10 @@ fn visit_type<'src>(ty: &a_ast::TypeKind<'src>) -> bir_ast::TypeKind<'src> {
         a_ast::TypeKind::String => bir_ast::TypeKind::String,
         a_ast::TypeKind::Bool => bir_ast::TypeKind::Bool,
         a_ast::TypeKind::Void => bir_ast::TypeKind::Void,
+        a_ast::TypeKind::Fn(params, ret_ty) => bir_ast::TypeKind::Fn(
+            params.iter().map(|p| visit_type(p)).collect(),
+            Box::new(visit_type(ret_ty)),
+        ),
     }
 }
 
@@ -134,5 +138,24 @@ fn visit_expr<'src>(expr: &a_ast::Expr<'src>) -> bir_ast::Expr<'src> {
             else_if_blocks,
             else_block,
         } => todo!(),
+        a_ast::Expr::Closure(closure) => {
+            let params = closure
+                .params
+                .iter()
+                .map(|param| bir_ast::Param {
+                    name: param.name.into(),
+                    ty: visit_type(&param.ty.kind),
+                    default: param.default.as_ref().map(|def| visit_expr(def)),
+                })
+                .collect();
+
+            bir_ast::Expr::Closure {
+                // TODO: change this
+                mangled_name: "test".to_string(),
+                ret_ty: visit_type(&closure.ret_ty),
+                body: visit_block(&closure.body),
+                params,
+            }
+        }
     }
 }

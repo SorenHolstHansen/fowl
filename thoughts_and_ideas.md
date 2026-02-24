@@ -78,6 +78,7 @@ Things that are not mentioned above mostly
 - Hard to go wrong for juniors, easy to do right for seniors.
 - Excellent debugging experience
 - Very nice in production
+- Would be cool, if in dev, we could replay the reason for a crash after it happens, sort of like sentry.
 
 ## Interesting blog posts
 

@@ -48,16 +48,15 @@ impl<'src> Lexer<'src> {
         <INIT> "let"                   { return self.token(TokenKind::Let) }
         <INIT> "return"                { return self.token(TokenKind::Return) }
         <INIT> "if"                    { return self.token(TokenKind::If) }
-        <INIT> "else"                  { return self.token(TokenKind::Else) }
         <INIT> "for"                   { return self.token(TokenKind::For) }
         <INIT> "break"                 { return self.token(TokenKind::Break) }
         <INIT> "continue"              { return self.token(TokenKind::Continue) }
         <INIT> "in"                    { return self.token(TokenKind::In) }
+        <INIT> "is"                    { return self.token(TokenKind::In) }
         <INIT> "use"                   { return self.token(TokenKind::Use) }
         <INIT> "public"                { return self.token(TokenKind::Public) }
         <INIT> "internal"              { return self.token(TokenKind::Internal) }
         <INIT> "private"               { return self.token(TokenKind::Private) }
-        <INIT> "match"                 { return self.token(TokenKind::Match) }
         <INIT> "none"                  { return self.token(TokenKind::None) }
         <INIT> "try"                   { return self.token(TokenKind::Try) }
         <INIT> "catch"                 { return self.token(TokenKind::Catch) }
@@ -69,6 +68,7 @@ impl<'src> Lexer<'src> {
         <INIT> "mut"                   { return self.token(TokenKind::Mut) }
         <INIT> "on"                    { return self.token(TokenKind::On) }
         <INIT> "self"                    { return self.token(TokenKind::Self_) }
+        <INIT> "impl"                    { return self.token(TokenKind::Impl) }
 
         // Types
 		<INIT> "int"                   { return self.token(TokenKind::Int) }

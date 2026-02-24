@@ -1,4 +1,3 @@
-use anyhow::bail;
 use bir::ast::{self, Program, TypeKind};
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{
@@ -62,7 +61,7 @@ impl Compiler {
         self.module.finish()
     }
 
-    fn declare_c_functions(&mut self) -> anyhow::Result<()> {
+    fn declare_c_functions(&mut self) {
         let pointer_type = self.module.target_config().pointer_type();
         let call_conv = self.isa.default_call_conv();
         // register "print" function
@@ -94,11 +93,9 @@ impl Compiler {
         self.module
             .declare_function("rt_int_to_str", Linkage::Import, &sig)
             .unwrap();
-
-        Ok(())
     }
 
-    fn lower_program(&mut self, program: &Program) -> anyhow::Result<()> {
+    fn lower_program(&mut self, program: &Program) {
         let functions: Vec<_> = program
             .declarations
             .iter()
@@ -110,29 +107,29 @@ impl Compiler {
 
         let has_main = functions.iter().any(|f| f.name == "main");
         if !has_main {
-            bail!("Please provide a 'main' function");
+            // TODO: This should have been checked earlier
+            panic!("Please provide a 'main' function");
         }
 
         if functions.is_empty() {
-            bail!("program contains no functions");
+            // TODO: This should have been checked earlier
+            panic!("program contains no functions");
         }
 
-        self.declare_c_functions()?;
+        self.declare_c_functions();
 
         // First, declare all functions (without bodies)
         for function in &functions {
-            self.declare_function(function)?;
+            self.declare_function(function);
         }
 
         // Then, lower the bodies of all functions
         for function in &functions {
-            self.lower_function_body(function)?;
+            self.lower_function_body(function);
         }
-
-        Ok(())
     }
 
-    fn lower_function_body(&mut self, function: &ast::Function) -> anyhow::Result<()> {
+    fn lower_function_body(&mut self, function: &ast::Function) {
         let func_id = match self.module.declarations().get_name(&function.name).unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -144,10 +141,7 @@ impl Compiler {
             self.isa.clone(),
             &mut self.module,
         );
-        if let Err(e) = function_compiler.compile(function) {
-            println!("{}:\n{}", function.name, self.ctx.func);
-            return Err(e);
-        }
+        function_compiler.compile(function);
         function_compiler.finalize();
 
         self.module.define_function(func_id, &mut self.ctx).unwrap();
@@ -155,17 +149,17 @@ impl Compiler {
         println!("{}:\n{}", function.name, self.ctx.func);
 
         self.ctx.clear();
-        Ok(())
     }
 
-    fn declare_function(&mut self, function: &ast::Function) -> anyhow::Result<FuncId> {
+    fn declare_function(&mut self, function: &ast::Function) -> FuncId {
         let mut param_types = vec![];
         for param in &function.params {
-            let ty = type_from_ast(&param.ty, &self.module)?.expect("Can't use void here");
+            let ty = type_from_ast(&param.ty, &self.module)
+                .expect("Can't use void here. Should already have been verified");
             param_types.push(AbiParam::new(ty));
         }
 
-        let ret_ty = if let Some(ty) = type_from_ast(&function.ret_ty, &self.module)? {
+        let ret_ty = if let Some(ty) = type_from_ast(&function.ret_ty, &self.module) {
             vec![AbiParam::new(ty)]
         } else {
             vec![]
@@ -177,23 +171,30 @@ impl Compiler {
             params: param_types,
             returns: ret_ty,
         };
-        let function_id = self
-            .module
-            .declare_function(&function.name, Linkage::Export, &sig)
-            .unwrap();
 
-        Ok(function_id)
+        self.module
+            .declare_function(
+                &function.name,
+                if function.public {
+                    Linkage::Export
+                } else {
+                    Linkage::Local
+                },
+                &sig,
+            )
+            .unwrap()
     }
 }
 
-fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> anyhow::Result<Option<Type>> {
+fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> Option<Type> {
     match &ast_ty {
         ast::TypeKind::Ident(_) => todo!(),
-        ast::TypeKind::Int => Ok(Some(types::I64)),
-        ast::TypeKind::Float => Ok(Some(types::F64)),
-        ast::TypeKind::String => Ok(Some(module.target_config().pointer_type())),
-        ast::TypeKind::Bool => Ok(Some(types::I8)),
-        ast::TypeKind::Void => Ok(None),
+        ast::TypeKind::Int => Some(types::I64),
+        ast::TypeKind::Float => Some(types::F64),
+        ast::TypeKind::String => Some(module.target_config().pointer_type()),
+        ast::TypeKind::Bool => Some(types::I8),
+        ast::TypeKind::Void => None,
+        ast::TypeKind::Fn(params, ret_ty) => todo!(),
     }
 }
 
@@ -227,7 +228,7 @@ impl<'a> FunctionCompiler<'a> {
         }
     }
 
-    fn strcat(&mut self, message_buf: Value, message: Value) -> anyhow::Result<Value> {
+    fn strcat(&mut self, message_buf: Value, message: Value) -> Value {
         let func_id = match self.module.declarations().get_name("rt_concat").unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -237,23 +238,23 @@ impl<'a> FunctionCompiler<'a> {
         let args = vec![message_buf, message];
 
         let call = self.builder.ins().call(local_callee, &args);
-        Ok(self.builder.inst_results(call)[0])
+        self.builder.inst_results(call)[0]
     }
 
-    fn compile(&mut self, function: &ast::Function) -> anyhow::Result<()> {
+    fn compile(&mut self, function: &ast::Function) {
         let call_conv = self.isa.default_call_conv();
 
         let params = function
             .params
             .iter()
             .map(|p| {
-                let ty = type_from_ast(&p.ty, self.module).unwrap().unwrap();
+                let ty = type_from_ast(&p.ty, self.module).unwrap();
                 AbiParam::new(ty)
             })
             .collect();
 
         let mut returns = Vec::new();
-        if let Some(t) = type_from_ast(&function.ret_ty, self.module).unwrap() {
+        if let Some(t) = type_from_ast(&function.ret_ty, self.module) {
             returns.push(AbiParam::new(t))
         }
 
@@ -273,7 +274,7 @@ impl<'a> FunctionCompiler<'a> {
         self.builder.seal_block(block0);
         for (i, param) in function.params.iter().enumerate() {
             let val = self.builder.block_params(block0)[i];
-            let ty = type_from_ast(&param.ty, self.module)?.unwrap();
+            let ty = type_from_ast(&param.ty, self.module).unwrap();
             let var = self
                 .variables
                 .entry(param.name.inner.to_string())
@@ -305,12 +306,12 @@ impl<'a> FunctionCompiler<'a> {
                 if self.builder.func.signature.returns.is_empty() {
                     self.builder.ins().return_(&[]);
                 } else {
-                    bail!("Non-void function must return a value");
+                    panic!("Non-void function must return a value");
                 }
             } else {
                 // Process all statements except possibly the last
                 for statement in &statements[..statements.len() - 1] {
-                    let _ = self.lower_statement(statement)?;
+                    let _ = self.lower_statement(statement);
                 }
 
                 // Handle the last statement
@@ -318,20 +319,20 @@ impl<'a> FunctionCompiler<'a> {
                 match last_stmt {
                     ast::Statement::Return { .. } => {
                         // Explicit return, just lower it
-                        let _ = self.lower_statement(last_stmt)?;
+                        let _ = self.lower_statement(last_stmt);
                     }
                     ast::Statement::Expr(expr)
                         if !self.builder.func.signature.returns.is_empty() =>
                     {
                         // Last expression in a non-void function becomes the return value
                         let ret_val = self
-                            .eval_expr(expr)?
+                            .eval_expr(expr)
                             .expect("Non-void function must return a value");
                         self.builder.ins().return_(&[ret_val]);
                     }
                     _ => {
                         // Any other statement
-                        let _ = self.lower_statement(last_stmt)?;
+                        self.lower_statement(last_stmt);
                         // Add implicit return for void functions
                         if self.builder.func.signature.returns.is_empty() {
                             self.builder.ins().return_(&[]);
@@ -342,20 +343,18 @@ impl<'a> FunctionCompiler<'a> {
         }
 
         if let Err(err) = codegen::verify_function(self.builder.func, self.isa.as_ref()) {
-            bail!(
+            panic!(
                 "Function '{}' failed verification with error\n{err}\n{err:#?}",
                 function.name
             );
-        }
-
-        Ok(())
+        };
     }
 
     fn finalize(self) {
         self.builder.finalize();
     }
 
-    fn eval_call(&mut self, call: &ast::Call) -> anyhow::Result<Option<Value>> {
+    fn eval_call(&mut self, call: &ast::Call) -> Option<Value> {
         let func_id = match self.module.declarations().get_name(&call.callee).unwrap() {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -364,21 +363,20 @@ impl<'a> FunctionCompiler<'a> {
         let mut args = Vec::with_capacity(call.args.len());
         for arg in &call.args {
             args.push(
-                self.eval_expr(arg)?
+                self.eval_expr(arg)
                     .expect("Should have been caught in type checking, that this is void"),
             );
         }
         let call = self.builder.ins().call(local_callee, &args);
         let inst_results = self.builder.inst_results(call);
-        Ok(inst_results.first().cloned())
-        // gn
+        inst_results.first().cloned()
     }
 
-    fn eval_expr(&mut self, expr: &ast::Expr) -> anyhow::Result<Option<Value>> {
+    fn eval_expr(&mut self, expr: &ast::Expr) -> Option<Value> {
         match expr {
             ast::Expr::IntLiteral(i) => {
                 let v = self.builder.ins().iconst(types::I64, *i);
-                Ok(Some(v))
+                Some(v)
             }
             ast::Expr::FloatLiteral(_) => todo!(),
             ast::Expr::BoolLiteral(_) => todo!(),
@@ -399,11 +397,11 @@ impl<'a> FunctionCompiler<'a> {
                 let local_id = self.module.declare_data_in_func(id, self.builder.func);
                 let pointer = self.module.target_config().pointer_type();
                 let s = self.builder.ins().symbol_value(pointer, local_id);
-                Ok(Some(s))
+                Some(s)
             }
             ast::Expr::StringInterpolation(parts) => {
-                let v = self.eval_string_interpolation(parts)?;
-                Ok(Some(v))
+                let v = self.eval_string_interpolation(parts);
+                Some(v)
             }
             ast::Expr::Ident { ident, .. } => {
                 let var = self
@@ -411,52 +409,50 @@ impl<'a> FunctionCompiler<'a> {
                     .get(ident.inner)
                     .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
                 let v = self.builder.use_var(*var);
-                Ok(Some(v))
+                Some(v)
             }
             ast::Expr::Binary {
                 op, left, right, ..
             } => {
-                let left_expr = self.eval_expr(left)?.expect("Should be there");
-                let right_expr = self.eval_expr(right)?.expect("Should be there");
+                let left_expr = self.eval_expr(left).expect("Should be there");
+                let right_expr = self.eval_expr(right).expect("Should be there");
                 match op {
-                    ast::BinaryOp::Add => Ok(Some(self.builder.ins().iadd(left_expr, right_expr))),
-                    ast::BinaryOp::Sub => Ok(Some(self.builder.ins().isub(left_expr, right_expr))),
-                    ast::BinaryOp::Mul => Ok(Some(self.builder.ins().imul(left_expr, right_expr))),
-                    ast::BinaryOp::Div => Ok(Some(self.builder.ins().sdiv(left_expr, right_expr))),
-                    ast::BinaryOp::Mod => Ok(Some(self.builder.ins().srem(left_expr, right_expr))),
+                    ast::BinaryOp::Add => Some(self.builder.ins().iadd(left_expr, right_expr)),
+                    ast::BinaryOp::Sub => Some(self.builder.ins().isub(left_expr, right_expr)),
+                    ast::BinaryOp::Mul => Some(self.builder.ins().imul(left_expr, right_expr)),
+                    ast::BinaryOp::Div => Some(self.builder.ins().sdiv(left_expr, right_expr)),
+                    ast::BinaryOp::Mod => Some(self.builder.ins().srem(left_expr, right_expr)),
                     ast::BinaryOp::Exp => todo!(),
-                    ast::BinaryOp::Eq => Ok(Some(self.builder.ins().icmp(
-                        IntCC::Equal,
-                        left_expr,
-                        right_expr,
-                    ))),
-                    ast::BinaryOp::Ne => Ok(Some(self.builder.ins().icmp(
+                    ast::BinaryOp::Eq => {
+                        Some(self.builder.ins().icmp(IntCC::Equal, left_expr, right_expr))
+                    }
+                    ast::BinaryOp::Ne => Some(self.builder.ins().icmp(
                         IntCC::NotEqual,
                         left_expr,
                         right_expr,
-                    ))),
-                    ast::BinaryOp::Lt => Ok(Some(self.builder.ins().icmp(
+                    )),
+                    ast::BinaryOp::Lt => Some(self.builder.ins().icmp(
                         IntCC::SignedLessThan,
                         left_expr,
                         right_expr,
-                    ))),
-                    ast::BinaryOp::Gt => Ok(Some(self.builder.ins().icmp(
+                    )),
+                    ast::BinaryOp::Gt => Some(self.builder.ins().icmp(
                         IntCC::SignedGreaterThan,
                         left_expr,
                         right_expr,
-                    ))),
-                    ast::BinaryOp::LtEq => Ok(Some(self.builder.ins().icmp(
+                    )),
+                    ast::BinaryOp::LtEq => Some(self.builder.ins().icmp(
                         IntCC::SignedLessThanOrEqual,
                         left_expr,
                         right_expr,
-                    ))),
-                    ast::BinaryOp::GtEq => Ok(Some(self.builder.ins().icmp(
+                    )),
+                    ast::BinaryOp::GtEq => Some(self.builder.ins().icmp(
                         IntCC::SignedGreaterThanOrEqual,
                         left_expr,
                         right_expr,
-                    ))),
+                    )),
                     ast::BinaryOp::And => todo!(),
-                    ast::BinaryOp::Or => Ok(Some(self.builder.ins().bor(left_expr, right_expr))),
+                    ast::BinaryOp::Or => Some(self.builder.ins().bor(left_expr, right_expr)),
                 }
             }
             ast::Expr::Unary { .. } => todo!(),
@@ -470,12 +466,12 @@ impl<'a> FunctionCompiler<'a> {
                 else_if_blocks: _,
                 else_block: els,
             } => {
-                let cond_value = self.eval_expr(cond)?.unwrap();
+                let cond_value = self.eval_expr(cond).unwrap();
                 let then_block = self.builder.create_block();
                 let else_block = self.builder.create_block();
                 let merge_block = self.builder.create_block();
 
-                let return_type = type_from_ast(ty, self.module)?;
+                let return_type = type_from_ast(ty, self.module);
                 let has_return_value = return_type.is_some();
 
                 if has_return_value {
@@ -490,13 +486,13 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.switch_to_block(then_block);
                 self.builder.seal_block(then_block);
                 for statement in &then.statements[..then.statements.len() - 1] {
-                    let _ = self.lower_statement(statement)?;
+                    self.lower_statement(statement);
                 }
 
                 if let Some(last_in_then) = then.statements.last() {
                     if has_return_value {
                         let then_return = if let ast::Statement::Expr(expr) = last_in_then {
-                            self.eval_expr(expr)?
+                            self.eval_expr(expr)
                         } else {
                             None
                         };
@@ -504,7 +500,7 @@ impl<'a> FunctionCompiler<'a> {
                             .ins()
                             .jump(merge_block, &[BlockArg::Value(then_return.unwrap())]);
                     } else {
-                        let terminates = self.lower_statement(last_in_then)?;
+                        let terminates = self.lower_statement(last_in_then);
                         if !terminates {
                             self.builder.ins().jump(merge_block, &[]);
                         }
@@ -518,13 +514,13 @@ impl<'a> FunctionCompiler<'a> {
 
                 if let Some(els) = els {
                     for statement in &els.statements[..els.statements.len() - 1] {
-                        let _ = self.lower_statement(statement)?;
+                        let _ = self.lower_statement(statement);
                     }
 
                     if let Some(last_in_else) = els.statements.last() {
                         if has_return_value {
                             let else_return = if let ast::Statement::Expr(expr) = last_in_else {
-                                self.eval_expr(expr)?
+                                self.eval_expr(expr)
                             } else {
                                 None
                             };
@@ -532,7 +528,7 @@ impl<'a> FunctionCompiler<'a> {
                                 .ins()
                                 .jump(merge_block, &[BlockArg::Value(else_return.unwrap())]);
                         } else {
-                            let terminates = self.lower_statement(last_in_else)?;
+                            let terminates = self.lower_statement(last_in_else);
                             if !terminates {
                                 self.builder.ins().jump(merge_block, &[]);
                             }
@@ -549,20 +545,53 @@ impl<'a> FunctionCompiler<'a> {
 
                 if has_return_value {
                     let phi = self.builder.block_params(merge_block)[0];
-                    Ok(Some(phi))
+                    Some(phi)
                 } else {
-                    Ok(None)
+                    None
                 }
+            }
+            ast::Expr::Closure {
+                mangled_name,
+                params,
+                ret_ty,
+                body,
+            } => {
+                let call_conv = self.isa.default_call_conv();
+                let sig = Signature {
+                    call_conv,
+                    params: params
+                        .iter()
+                        .map(|param| {
+                            AbiParam::new(
+                                type_from_ast(&param.ty, self.module)
+                                    .expect("Analyzer should have checked that this is not-null"),
+                            )
+                        })
+                        .collect(),
+                    returns: type_from_ast(ret_ty, self.module)
+                        .map(|t| vec![AbiParam::new(t)])
+                        .unwrap_or_default(),
+                };
+
+                self.module
+                    .declare_function(mangled_name, Linkage::Local, &sig)
+                    .unwrap();
+
+                // Construct the closure
+
+                // Define the function
+
+                todo!()
             }
         }
     }
 
-    fn format_int_fn(&mut self, value: Value) -> anyhow::Result<Value> {
+    fn format_int_fn(&mut self, value: Value) -> Value {
         let func_id = match self
             .module
             .declarations()
             .get_name("rt_int_to_str")
-            .unwrap()
+            .expect("rt_int_to_str should be here")
         {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -572,15 +601,15 @@ impl<'a> FunctionCompiler<'a> {
         let args = vec![value];
 
         let call = self.builder.ins().call(local_callee, &args);
-        Ok(self.builder.inst_results(call)[0])
+        self.builder.inst_results(call)[0]
     }
 
-    fn format_float_fn(&mut self, value: Value) -> anyhow::Result<Value> {
+    fn format_float_fn(&mut self, value: Value) -> Value {
         let func_id = match self
             .module
             .declarations()
             .get_name("rt_double_to_str")
-            .unwrap()
+            .expect("rt_double_to_str should be here")
         {
             cranelift_module::FuncOrDataId::Func(func_id) => func_id,
             cranelift_module::FuncOrDataId::Data(_) => todo!(),
@@ -590,10 +619,10 @@ impl<'a> FunctionCompiler<'a> {
         let args = vec![value];
 
         let call = self.builder.ins().call(local_callee, &args);
-        Ok(self.builder.inst_results(call)[0])
+        self.builder.inst_results(call)[0]
     }
 
-    fn eval_string_interpolation(&mut self, parts: &[ast::Expr]) -> anyhow::Result<Value> {
+    fn eval_string_interpolation(&mut self, parts: &[ast::Expr]) -> Value {
         // Setup global string
         let id = self.module.declare_anonymous_data(true, false).unwrap();
         // TODO: pull the DataDescription top-level to reuse resources
@@ -606,29 +635,29 @@ impl<'a> FunctionCompiler<'a> {
         let mut result_ptr = self.builder.ins().symbol_value(pointer, local_id);
 
         for part in parts {
-            let mut v = self.eval_expr(part)?.expect("Found void");
+            let mut v = self.eval_expr(part).expect("Found void");
             match part.ty() {
                 TypeKind::Int => {
-                    v = self.format_int_fn(v)?;
+                    v = self.format_int_fn(v);
                 }
                 TypeKind::Float => {
-                    v = self.format_float_fn(v)?;
+                    v = self.format_float_fn(v);
                 }
                 TypeKind::Ident(_) => {}
                 _ => {}
             }
-            let new_result = self.strcat(result_ptr, v)?;
+            let new_result = self.strcat(result_ptr, v);
             result_ptr = new_result;
         }
 
-        Ok(result_ptr)
+        result_ptr
     }
 
-    fn lower_statement(&mut self, statement: &ast::Statement) -> anyhow::Result<bool> {
+    fn lower_statement(&mut self, statement: &ast::Statement) -> bool {
         match statement {
             ast::Statement::Let { name, expr, .. } => {
                 let value = self
-                    .eval_expr(expr)?
+                    .eval_expr(expr)
                     .expect("This should exist. Probably didn't analyzer for void");
                 // let ty = type_from_ast(&ty.clone().expect("This can't be void"), &self.module)?
                 //     .expect("This can't be void");
@@ -638,35 +667,35 @@ impl<'a> FunctionCompiler<'a> {
                 );
                 self.builder.def_var(var, value);
                 self.variables.insert(name.inner.to_string(), var);
-                Ok(false)
+                false
             }
             ast::Statement::Assign { name, expr } => {
                 // Evaluate the expression first to get the new value
                 let value = self
-                    .eval_expr(expr)?
-                    .ok_or_else(|| anyhow::anyhow!("Assignment expression must return a value"))?;
+                    .eval_expr(expr)
+                    .expect("Assignment expression must return a value");
 
                 // Get the variable that we're assigning to
                 let var = self
                     .variables
                     .get(name.inner)
-                    .ok_or_else(|| anyhow::anyhow!("Variable '{}' not found", name.inner))?;
+                    .unwrap_or_else(|| panic!("Variable '{}' not found", name.inner));
 
                 // Update the variable
                 self.builder.def_var(*var, value);
-                Ok(false)
+                false
             }
             ast::Statement::Return { expr, .. } => match expr {
                 None => {
                     self.builder.ins().return_(&[]);
-                    Ok(true)
+                    true
                 }
                 Some(expr) => {
                     let ret = self
-                        .eval_expr(expr)?
+                        .eval_expr(expr)
                         .expect("Should have been caught in type checking, that this is void");
                     self.builder.ins().return_(&[ret]);
-                    Ok(true)
+                    true
                 }
             },
             ast::Statement::ForLoop { cond, block } => {
@@ -683,7 +712,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.builder.switch_to_block(header_block);
 
                 let condition_value = match cond {
-                    Some(cond) => self.eval_expr(cond)?.unwrap(),
+                    Some(cond) => self.eval_expr(cond).unwrap(),
                     None => self.builder.ins().iconst(types::I64, 1),
                 };
                 self.builder
@@ -695,7 +724,7 @@ impl<'a> FunctionCompiler<'a> {
 
                 let mut last_terminates = false;
                 for stmt in &block.statements {
-                    last_terminates = self.lower_statement(stmt)?;
+                    last_terminates = self.lower_statement(stmt);
                 }
                 if !last_terminates {
                     self.builder.ins().jump(header_block, &[]);
@@ -713,14 +742,14 @@ impl<'a> FunctionCompiler<'a> {
 
                 // Just return 0 for now.
                 // self.builder.ins().iconst(self.int, 0);
-                Ok(false)
+                false
             }
             ast::Statement::Function(_) => todo!(),
             ast::Statement::Struct(_) => todo!(),
             ast::Statement::Enum(_) => todo!(),
             ast::Statement::Expr(expr) => {
-                self.eval_expr(expr)?;
-                Ok(false)
+                self.eval_expr(expr);
+                false
             }
             ast::Statement::Break { .. } => {
                 let l = self
@@ -729,7 +758,7 @@ impl<'a> FunctionCompiler<'a> {
                     .expect("Analyzer should have checked that the break is inside a loop");
                 self.builder.ins().jump(l.exit_block, &[]);
 
-                Ok(true)
+                true
             }
             ast::Statement::Continue { .. } => {
                 let l = self
@@ -738,19 +767,15 @@ impl<'a> FunctionCompiler<'a> {
                     .expect("Analyzer should have checked that the continue is inside a loop");
                 self.builder.ins().jump(l.header_block, &[]);
 
-                Ok(true)
+                true
             }
         }
     }
 }
 
-pub fn build_executable(
-    program: &Program,
-    output: &Path,
-    options: &CodegenOptions,
-) -> anyhow::Result<()> {
+pub fn build_executable(program: &Program, output: &Path, options: &CodegenOptions) {
     let mut compiler = Compiler::new(options);
-    compiler.lower_program(program)?;
+    compiler.lower_program(program);
     let product = compiler.finish();
 
     // Generate the object file.
@@ -797,8 +822,6 @@ pub fn build_executable(
             panic!()
         }
     }
-
-    Ok(())
 }
 
 fn runtime_c_code() -> &'static str {

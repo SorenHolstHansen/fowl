@@ -1,27 +1,61 @@
-public enum Bar {
+public struct Foo(
+	id: int
+	name: string
+)
+
+fn on Foo first_name(self) string {
+	return self.name.split(" ").first()
+}
+
+internal enum Bar(
 	A
-	B
-}
+	B(Foo)
+	C(string)
+)
 
-public struct Foo {
-	a: int
-	b: float
-	c: string
-	d: bool
-	e: Bar
-}
-
-fn a(f: Foo) int throw string {
-	if let a = f.a {
-		return a
+private fn foo(_ foo: Foo, b: string) int {
+	let output = if foo.id == {
+		2 { 1 }
+		3 { 2 }
+		_ { }
 	}
-	throw "f.a is none"
+	// can shorthand to
+	// if foo.id == 2 {}
+
+	if foo {
+		.id < 10 {}
+		.first_name() == "Jon" {}
+		== Foo(id, "Jon Smith") {}
+		== Foo(11, _) {}
+		_ {}
+	}
+
+	return 1
+}
+
+fn a() int throw string {
+	throw "..."
 }
 
 fn main() void {
-	let something = 42
-	let foo = Foo { a = none, b: 1.1, c: "hi there", d: true, e: Bar.A }
-	let my_a = try a(foo) catch e {}
+	let first_name = "Jon"
+	let last_name = "Smith"
+	let mut f = Foo(id = 1, name = "{first_name} {last_name}")
+	f.id = 2
 
-	// println("This is my_a {my_a}. I can escape stuff \{something\}. This is nested {"Hi {4 + 5}"}")
+	let res = try a() catch e {}
+	// or perhaps
+	if res == {
+		Error(e) {}
+		Ok(i) {}
+	}
+
+	foo(f, b = "hi")
+
+	let array = Array(1, 2, 3)
+	let second = array(1)
+}
+
+fn identity[T](t: T) T {
+	return t
 }

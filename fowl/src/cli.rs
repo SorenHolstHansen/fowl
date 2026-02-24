@@ -192,7 +192,7 @@ fn compile_pipeline(
     // Codegen step
     let codegen_options = settings.codegen_options()?;
     let output = root.join(format!(".fowl/{}", fowl_jsonc.name()));
-    build_executable(&program, &output, &codegen_options)?;
+    build_executable(&program, &output, &codegen_options);
 
     Ok(output)
 }

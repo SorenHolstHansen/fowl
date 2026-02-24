@@ -2,7 +2,7 @@ use super::ast::{
     Block, Call, Declaration, Enum, EnumVariant, ExprKind, Function, Ident, Op, Param, Program,
     Statement, Struct, Type, TypeKind,
 };
-use crate::ast::{BinaryOp, CallArg, Expr, Use, Vis};
+use crate::ast::{BinaryOp, CallArg, Closure, Expr, Use, Vis};
 use error::Diagnostic;
 use lexer::{Lexer, Token, TokenKind};
 
@@ -223,7 +223,7 @@ impl<'src> Parser<'src> {
                         .with_note("try giving the struct a name: `struct MyStruct {{}}`")
                 })?;
 
-                self.expect_token(TokenKind::LBrace).map_err(|e| {
+                self.expect_token(TokenKind::LParen).map_err(|e| {
                     e.with_note(format!(
                         "try giving the struct a body: `struct {} {{}}`",
                         name.inner,
@@ -237,7 +237,7 @@ impl<'src> Parser<'src> {
                     if matches!(
                         self.peek_token(),
                         Token {
-                            kind: TokenKind::RBrace,
+                            kind: TokenKind::RParen,
                             ..
                         }
                     ) {
@@ -257,7 +257,7 @@ impl<'src> Parser<'src> {
 
                     self.expect_token(TokenKind::Semicolon)?;
                     if let Token {
-                        kind: TokenKind::RBrace,
+                        kind: TokenKind::RParen,
                         span,
                     } = self.peek_token()
                     {
@@ -285,7 +285,7 @@ impl<'src> Parser<'src> {
                         .with_note("try giving the enum a name: `enum MyEnum {{}}`")
                 })?;
 
-                self.expect_token(TokenKind::LBrace).map_err(|e| {
+                self.expect_token(TokenKind::LParen).map_err(|e| {
                     e.with_note(format!(
                         "try giving the enum a body: `enum {} {{}}`",
                         name.inner,
@@ -299,7 +299,7 @@ impl<'src> Parser<'src> {
                     if matches!(
                         self.peek_token(),
                         Token {
-                            kind: TokenKind::RBrace,
+                            kind: TokenKind::RParen,
                             ..
                         }
                     ) {
@@ -321,7 +321,7 @@ impl<'src> Parser<'src> {
                     });
 
                     if let Token {
-                        kind: TokenKind::RBrace,
+                        kind: TokenKind::RParen,
                         span,
                     } = self.peek_token()
                     {
@@ -580,9 +580,9 @@ impl<'src> Parser<'src> {
                 self.next_token();
 
                 let rhs = self.parse_expression(1)?;
-                let Token { span, .. } = self.expect_token(TokenKind::Semicolon)?;
+                self.eat_if_token(TokenKind::Semicolon);
                 Ok(Statement::Return {
-                    span: token_span.merge(span),
+                    span: token_span.merge(rhs.span),
                     expr: Some(rhs),
                 })
             }
@@ -899,6 +899,26 @@ impl<'src> Parser<'src> {
                 }),
                 span: expr_span,
             },
+            TokenKind::Fn => {
+                // TODO: Make a separate parse_closure_parameters.
+                // We would wan't to not care about labels, and possibly param types
+                let params = self.parse_function_parameters(None)?;
+                let ty = self.parse_type()?;
+                let lbrace = self.expect_token(TokenKind::LBrace)?;
+                let body = self.parse_statements()?;
+                let rbrace = self.expect_token(TokenKind::RBrace)?;
+                Expr {
+                    span: expr_span.merge(rbrace.span),
+                    kind: ExprKind::Closure(Closure {
+                        params,
+                        ret_ty: ty,
+                        body: Block {
+                            span: lbrace.span.merge(rbrace.span),
+                            statements: body,
+                        },
+                    }),
+                }
+            }
             t => {
                 return Err(
                     Diagnostic::error(expr_span, format!("Unexpected token '{}'", t))
