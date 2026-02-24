@@ -76,6 +76,13 @@ pub struct Call<'src> {
     pub args: Vec<Expr<'src>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Closure<'src> {
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: TypeKind<'src>,
+    pub body: Block<'src>,
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Expr<'src> {
@@ -122,28 +129,34 @@ pub enum Expr<'src> {
         else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
         else_block: Option<Block<'src>>,
     },
+    Closure(Closure<'src>),
 }
 
 impl<'src> Expr<'src> {
-    pub fn ty(&self) -> &TypeKind<'src> {
+    pub fn ty(&self) -> TypeKind<'src> {
         match self {
-            Expr::IntLiteral(_) => &TypeKind::Int,
-            Expr::FloatLiteral(_) => &TypeKind::Float,
-            Expr::BoolLiteral(_) => &TypeKind::Bool,
-            Expr::StringLiteral(_) => &TypeKind::String,
-            Expr::StringInterpolation(_) => &TypeKind::String,
-            Expr::Ident { ty, .. } => ty,
-            Expr::Binary { ty, .. } => ty,
-            Expr::Unary { ty, .. } => ty,
-            Expr::Call { ty, .. } => ty,
+            Expr::IntLiteral(_) => TypeKind::Int,
+            Expr::FloatLiteral(_) => TypeKind::Float,
+            Expr::BoolLiteral(_) => TypeKind::Bool,
+            Expr::StringLiteral(_) => TypeKind::String,
+            Expr::StringInterpolation(_) => TypeKind::String,
+            Expr::Ident { ty, .. } => ty.clone(),
+            Expr::Binary { ty, .. } => ty.clone(),
+            Expr::Unary { ty, .. } => ty.clone(),
+            Expr::Call { ty, .. } => ty.clone(),
             Expr::StructInstance { .. } => todo!(),
-            Expr::Member { ty, .. } => ty,
-            Expr::If { ty, .. } => ty,
+            Expr::Member { ty, .. } => ty.clone(),
+            Expr::If { ty, .. } => ty.clone(),
+            // TODO: Closure should have another type
+            Expr::Closure(closure) => TypeKind::Fn(
+                closure.params.iter().map(|p| p.ty.kind.clone()).collect(),
+                Box::new(closure.ret_ty.clone()),
+            ),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind<'src> {
     Ident(Ident<'src>),
     Int,
@@ -151,6 +164,7 @@ pub enum TypeKind<'src> {
     String,
     Bool,
     Void,
+    Fn(Vec<TypeKind<'src>>, Box<TypeKind<'src>>),
 }
 
 impl std::fmt::Display for TypeKind<'_> {
@@ -162,6 +176,16 @@ impl std::fmt::Display for TypeKind<'_> {
             TypeKind::String => write!(f, "string"),
             TypeKind::Bool => write!(f, "bool"),
             TypeKind::Void => write!(f, "void"),
+            TypeKind::Fn(params, ret_ty) => write!(
+                f,
+                "Fn({}) {}",
+                params
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret_ty
+            ),
         }
     }
 }

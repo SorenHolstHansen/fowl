@@ -12,12 +12,12 @@ pub fn analyzer<'src>(
 ) -> (a_ast::Program<'src>, Vec<Diagnostic<'src>>) {
     let mut analyzer = Analyzer {
         parsed_files: files.clone(),
-        analyzered_declarations: TypecheckedDeclarations::new(),
+        analyzed_declarations: TypecheckedDeclarations::new(),
         errors: Vec::new(),
         program: a_ast::Program {
             declarations: Vec::new(),
         },
-        variables: HashMap::new(),
+        scope: HashMap::new(),
         current_module_name: format!("{}.main", package_name),
         context_name_mapping: ContextNameMapping(HashMap::new()),
     };
@@ -77,7 +77,7 @@ impl ContextNameMapping {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Variable<'src> {
     type_kind: a_ast::TypeKind<'src>,
     mutable: bool,
@@ -86,11 +86,11 @@ struct Variable<'src> {
 
 struct Analyzer<'src> {
     parsed_files: HashMap<String, parser_ast::Program<'src>>,
-    analyzered_declarations: TypecheckedDeclarations<'src>,
-    // Complete program after analyzering
+    analyzed_declarations: TypecheckedDeclarations<'src>,
+    /// Complete program after analyzing
     program: a_ast::Program<'src>,
     errors: Vec<Diagnostic<'src>>,
-    variables: HashMap<&'src str, Variable<'src>>,
+    scope: HashMap<&'src str, Variable<'src>>,
     current_module_name: String,
     context_name_mapping: ContextNameMapping,
 }
@@ -134,7 +134,7 @@ impl<'src> Analyzer<'src> {
                 if let Some(on) = function.on {
                     function_name = format!("{}.{function_name}", on.kind);
                 }
-                self.analyzered_declarations.insert(
+                self.analyzed_declarations.insert(
                     &self.current_module_name,
                     &function_name,
                     &function_decl,
@@ -157,13 +157,11 @@ impl<'src> Analyzer<'src> {
                     ));
                 }
                 // TODO: import the artifacts into the module
-                let _decl = match self.analyzered_declarations.get(&module_name, last) {
+                let _decl = match self.analyzed_declarations.get(&module_name, last) {
                     Some(p) => p,
                     None => {
                         self.analyzer(&module_name);
-                        self.analyzered_declarations
-                            .get(&module_name, last)
-                            .unwrap()
+                        self.analyzed_declarations.get(&module_name, last).unwrap()
                     }
                 };
                 self.context_name_mapping.insert(
@@ -182,7 +180,7 @@ impl<'src> Analyzer<'src> {
     ) -> Result<a_ast::Function<'src>, Diagnostic<'src>> {
         // Clear up any variables from previous functions
         // TODO: if this is a function in a fuction, the variables should be wiped
-        self.variables = HashMap::new();
+        self.scope = HashMap::new();
         let mut params = Vec::with_capacity(function.params.len());
         let mut has_labelled_param = false;
         for param in &function.params {
@@ -198,10 +196,15 @@ impl<'src> Analyzer<'src> {
                 has_labelled_param = true;
             };
             let ty = self.visit_type(&param.ty)?;
-            self.variables.insert(
+            let default = if let Some(default) = &param.default {
+                Some(self.visit_expr(default)?)
+            } else {
+                None
+            };
+            self.scope.insert(
                 param.name.inner,
                 Variable {
-                    type_kind: ty.kind,
+                    type_kind: ty.kind.clone(),
                     mutable: false,
                     name_span: param.span,
                 },
@@ -211,7 +214,7 @@ impl<'src> Analyzer<'src> {
                 name: param.name.into(),
                 label_ignored: param.label_ignored,
                 ty,
-                default: None,
+                default,
             });
         }
 
@@ -232,7 +235,7 @@ impl<'src> Analyzer<'src> {
         } else {
             let body = self.visit_block(&function.body)?;
 
-            let ret_ty = body.ty;
+            let ret_ty = body.ty.clone();
             let defined_ret_ty = self.visit_type(&function.ret_ty)?;
             if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
                 let span = function.body.statements.last().unwrap().span();
@@ -291,8 +294,8 @@ impl<'src> Analyzer<'src> {
         let ty = statements
             .last()
             .map(|stmt| match stmt {
-                a_ast::Statement::Return { ty, .. } => *ty,
-                a_ast::Statement::Expr(e) => *e.ty(),
+                a_ast::Statement::Return { ty, .. } => ty.clone(),
+                a_ast::Statement::Expr(e) => e.ty().clone(),
                 _ => a_ast::TypeKind::Void,
             })
             .unwrap_or(a_ast::TypeKind::Void);
@@ -319,11 +322,11 @@ impl<'src> Analyzer<'src> {
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that ty and expr.ty match
                 let name: a_ast::Ident<'src> = (*name).into();
-                let ty = *expr.ty();
-                self.variables.insert(
+                let ty = expr.ty().clone();
+                self.scope.insert(
                     name.inner,
                     Variable {
-                        type_kind: ty,
+                        type_kind: ty.clone(),
                         mutable: *mutable,
                         name_span: name.span,
                     },
@@ -340,8 +343,8 @@ impl<'src> Analyzer<'src> {
                 let expr = self.visit_expr(expr)?;
                 // TODO: check that type of the name and expr.ty match
                 let name: a_ast::Ident<'src> = (*name).into();
-                let ty = *expr.ty();
-                let Some(expected_var) = self.variables.get(name.inner) else {
+                let ty = expr.ty().clone();
+                let Some(expected_var) = self.scope.get(name.inner) else {
                     return Err(Diagnostic::error(
                         *span,
                         format!("A variable with the name '{}' does not exist", name.inner),
@@ -384,7 +387,7 @@ impl<'src> Analyzer<'src> {
                     let expr = self.visit_expr(expr)?;
                     Ok(a_ast::Statement::Return {
                         span: *span,
-                        ty: *expr.ty(),
+                        ty: expr.ty().clone(),
                         expr: Some(expr),
                     })
                 }
@@ -393,7 +396,7 @@ impl<'src> Analyzer<'src> {
                 let cond = match cond {
                     Some(cond) => {
                         let cond = self.visit_expr(cond)?;
-                        if *cond.ty() != a_ast::TypeKind::Bool {
+                        if cond.ty() != a_ast::TypeKind::Bool {
                             return Err(Diagnostic::error(
                                 *span,
                                 "Expected the condition to be a boolean",
@@ -442,10 +445,11 @@ impl<'src> Analyzer<'src> {
             }
             parser_ast::ExprKind::Ident(i) => {
                 let ident: a_ast::Ident<'src> = (*i).into();
-                let var = *self
-                    .variables
+                let var = self
+                    .scope
                     .get(&ident.inner)
-                    .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner));
+                    .unwrap_or_else(|| panic!("Could not find variable '{}'", ident.inner))
+                    .clone();
                 Ok(a_ast::Expr::Ident {
                     ident,
                     ty: var.type_kind,
@@ -455,15 +459,15 @@ impl<'src> Analyzer<'src> {
                 let left_expr = self.visit_expr(left)?;
                 let right_expr = self.visit_expr(right)?;
                 if matches!(op, parser_ast::BinaryOp::And | parser_ast::BinaryOp::Or)
-                    && left_expr.ty() != &a_ast::TypeKind::Bool
-                    && right_expr.ty() != &a_ast::TypeKind::Bool
+                    && left_expr.ty() != a_ast::TypeKind::Bool
+                    && right_expr.ty() != a_ast::TypeKind::Bool
                 {
                     return Err(Diagnostic::error(
                         expr.span,
                         "Only boolean expression allowed on either side of 'and' or 'or'",
                     ));
                 }
-                if !self.validate_types_align(left_expr.ty(), right_expr.ty()) {
+                if !self.validate_types_align(&left_expr.ty(), &right_expr.ty()) {
                     let left_ty = left_expr.ty().to_string();
                     let left_a_or_an = a_or_an(&left_ty);
                     let right_ty = right_expr.ty().to_string();
@@ -516,7 +520,7 @@ impl<'src> Analyzer<'src> {
                             format!("This is {} '{}'", right_a_or_an, right_ty),
                         ));
                 }
-                let mut ty = *left_expr.ty();
+                let mut ty = left_expr.ty().clone();
                 if matches!(
                     op,
                     parser_ast::BinaryOp::Eq
@@ -549,10 +553,10 @@ impl<'src> Analyzer<'src> {
                             let split = mapped.split(".").collect::<Vec<_>>();
                             let last = split.last().unwrap();
                             let module = &split[..(split.len() - 1)].join(".");
-                            let decl = self.analyzered_declarations.get(module, last).unwrap();
+                            let decl = self.analyzed_declarations.get(module, last).unwrap();
                             (decl.clone(), mapped.to_string())
                         } else if let Some(decl) = self
-                            .analyzered_declarations
+                            .analyzed_declarations
                             .get(&self.current_module_name, &function_name)
                         {
                             (
@@ -687,16 +691,71 @@ impl<'src> Analyzer<'src> {
                             let split = mapped.split(".").collect::<Vec<_>>();
                             let last = split.last().unwrap();
                             let module = &split[..(split.len() - 1)].join(".");
-                            let decl = self.analyzered_declarations.get(module, last).unwrap();
+                            let decl = self.analyzed_declarations.get(module, last).unwrap();
                             (decl.clone(), mapped.to_string())
                         } else if let Some(decl) = self
-                            .analyzered_declarations
+                            .analyzed_declarations
                             .get(&self.current_module_name, ident.inner)
                         {
                             (
                                 decl.clone(),
                                 format!("{}.{}", self.current_module_name, ident.inner),
                             )
+                        } else if let Some(closure) = self.scope.get(&ident.inner).cloned()
+                            && let a_ast::TypeKind::Fn(params_types, ret_ty) = &closure.type_kind
+                        {
+                            // TODO: for closures, all arguments are implicitly anonymous, at least I think so.
+                            // Think of the following example
+                            // ```
+                            // on Array[T] fn map(fn(elem: T) U) Array[U] {...}
+                            // ...
+                            // Array(1, 2, 3).map(fn(number) { return number * 2 })
+                            // ```
+                            // Here, the call-site doesn't want to call the argument "elem" but "number".
+                            // They should be allowed to, and so, any call-site of the closure should perhaps be forced to not use named params?
+                            // But what about using actual functions in closure places. Perhaps calling a function pointer should never use named arguments, and instead use positional arguments
+                            if params_types.len() != call.args.len() {
+                                return Err(Diagnostic::error(
+                                    call.callee.span,
+                                    format!(
+                                        "Expected {} arguments, found {}.",
+                                        params_types.len(),
+                                        call.args.len(),
+                                    ),
+                                ));
+                            }
+                            let mut args = Vec::with_capacity(call.args.len());
+                            for (i, param_type) in params_types.iter().enumerate() {
+                                // Use index
+                                let arg = &call.args[i];
+                                if arg.label.is_some() {
+                                    return Err(Diagnostic::error(
+                                        arg.span,
+                                        "Don't use a label for a closure call",
+                                    )
+                                    .with_error_label(arg.span, "here"));
+                                }
+                                let expr = self.visit_expr(&arg.expr)?;
+                                if !self.validate_types_align(param_type, &expr.ty()) {
+                                    return Err(Diagnostic::error(arg.span, "Wrong type")
+                                        .with_error_label(
+                                            arg.span,
+                                            format!(
+                                                "Expected '{}' found '{}'",
+                                                param_type,
+                                                expr.ty()
+                                            ),
+                                        ));
+                                }
+                                args.push(expr);
+                            }
+                            return Ok(a_ast::Expr::Call {
+                                ty: *ret_ty.clone(),
+                                call: a_ast::Call {
+                                    callee: ident.inner.to_string(),
+                                    args,
+                                },
+                            });
                         } else {
                             return Err(Diagnostic::error(
                                 call.callee.span,
@@ -817,7 +876,7 @@ impl<'src> Analyzer<'src> {
                 else_block,
             } => {
                 let t_cond = self.visit_expr(cond)?;
-                if *t_cond.ty() != a_ast::TypeKind::Bool {
+                if t_cond.ty() != a_ast::TypeKind::Bool {
                     return Err(Diagnostic::error(
                         cond.span,
                         "Only boolean expressions allowed in if checks",
@@ -836,14 +895,87 @@ impl<'src> Analyzer<'src> {
                 };
                 // TODO: check that all blocks either "yield" the right type or return the right type in the function
                 Ok(a_ast::Expr::If {
-                    ty: t_then.ty,
+                    ty: t_then.ty.clone(),
                     cond: Box::new(t_cond),
                     then: t_then,
                     else_if_blocks: t_else_if_blocks,
                     else_block: t_else_block,
                 })
             }
+            parser_ast::ExprKind::Closure(closure) => {
+                let previous_scope = self.scope.clone();
+                self.scope = previous_scope.clone();
+                let closure = self.visit_closure(closure)?;
+                self.scope = previous_scope;
+                Ok(a_ast::Expr::Closure(closure))
+            }
         }
+    }
+
+    fn visit_closure(
+        &mut self,
+        closure: &parser_ast::Closure<'src>,
+    ) -> Result<a_ast::Closure<'src>, Diagnostic<'src>> {
+        let mut params = Vec::with_capacity(closure.params.len());
+        let mut has_labelled_param = false;
+        for param in &closure.params {
+            if param.label_ignored {
+                if has_labelled_param {
+                    return Err(Diagnostic::error(
+                        param.span,
+                        "can't have an anonymized param after a named param",
+                    )
+                    .with_error_label(param.span, "here"));
+                }
+            } else if param.name.inner != "self" {
+                has_labelled_param = true;
+            };
+            let ty = self.visit_type(&param.ty)?;
+            self.scope.insert(
+                param.name.inner,
+                Variable {
+                    type_kind: ty.kind.clone(),
+                    mutable: false,
+                    name_span: param.span,
+                },
+            );
+            params.push(a_ast::Param {
+                span: param.span,
+                name: param.name.into(),
+                label_ignored: param.label_ignored,
+                ty,
+                default: None,
+            });
+        }
+
+        let body = self.visit_block(&closure.body)?;
+
+        let ret_ty = body.ty.clone();
+        let defined_ret_ty = self.visit_type(&closure.ret_ty)?;
+        if !self.validate_types_align(&defined_ret_ty.kind, &ret_ty) {
+            let span = closure.body.statements.last().unwrap().span();
+            return Err(Diagnostic::error(
+                closure.ret_ty.span,
+                "Mismatched return type of closure",
+            )
+            .with_info_label(
+                closure.ret_ty.span,
+                format!("Return type defined as {}", closure.ret_ty.kind),
+            )
+            .with_error_label(
+                *span,
+                format!(
+                    "Mismatched types. Expected '{}' found '{}'",
+                    closure.ret_ty.kind, ret_ty
+                ),
+            ));
+        }
+
+        Ok(a_ast::Closure {
+            params,
+            ret_ty,
+            body,
+        })
     }
 
     fn validate_types_align(

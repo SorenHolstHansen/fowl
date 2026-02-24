@@ -131,16 +131,16 @@ struct Message {
 
 fn task_example() {
   /* This does not compile as is mutates posts */
-  /* spawn(fn() {posts.mut.delete(index = 2)}) */
+  /* spawn(fn() { posts.mut.delete(index = 2) }) */
 
   /* spawn a process, and use Message as the message protocol */
   let handle = spawn[Message](fn(receive: Receiver[Message]) {
-    while message = receive() {
-      if message.kind == MessageKind.Foo {
-        println(message.body)
-      }
-      /* .. */
+    /* .. */
+    let message = receive()
+    if message.kind == MessageKind.Foo {
+      println(message.body)
     }
+    /* .. */
   })
 
   handle.send(Message(kind = MessageKind.Foo, body = "Hello"))

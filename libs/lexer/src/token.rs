@@ -12,6 +12,7 @@ pub enum TokenKind<'src> {
     /// `if` keyword
     If,
     /// `else` keyword
+    // TODO: remove
     Else,
     /// `for` keyword
     For,
@@ -21,6 +22,8 @@ pub enum TokenKind<'src> {
     Continue,
     /// `in` keyword
     In,
+    /// `is` keyword
+    Is,
     /// `use` keyword
     Use,
     /// `public` keyword
@@ -29,8 +32,6 @@ pub enum TokenKind<'src> {
     Internal,
     /// `private` keyword
     Private,
-    /// `match` keyword
-    Match,
     /// `none` keyword
     None,
     /// `try` keyword
@@ -51,6 +52,8 @@ pub enum TokenKind<'src> {
     Mut,
     /// `on` keyword
     On,
+    /// `impl` keyword
+    Impl,
     /// `self` keyword
     Self_,
 
@@ -169,11 +172,11 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::In => write!(f, "in"),
+            TokenKind::Is => write!(f, "is"),
             TokenKind::Use => write!(f, "use"),
             TokenKind::Public => write!(f, "public"),
             TokenKind::Internal => write!(f, "internal"),
             TokenKind::Private => write!(f, "private"),
-            TokenKind::Match => write!(f, "match"),
             TokenKind::None => write!(f, "none"),
             TokenKind::Try => write!(f, "try"),
             TokenKind::Catch => write!(f, "catch"),
@@ -184,6 +187,7 @@ impl std::fmt::Display for TokenKind<'_> {
             TokenKind::Or => write!(f, "or"),
             TokenKind::Mut => write!(f, "mut"),
             TokenKind::On => write!(f, "on"),
+            TokenKind::Impl => write!(f, "impl"),
             TokenKind::Self_ => write!(f, "self"),
             TokenKind::Int => write!(f, "int"),
             TokenKind::Float => write!(f, "float"),

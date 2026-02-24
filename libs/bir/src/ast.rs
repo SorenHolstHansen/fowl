@@ -117,6 +117,15 @@ pub enum Expr<'src> {
         else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
         else_block: Option<Block<'src>>,
     },
+    // TODO: Perhaps unify Closure and Function?
+    Closure {
+        mangled_name: String,
+        params: Vec<Param<'src>>,
+        ret_ty: TypeKind<'src>,
+        body: Block<'src>,
+        /// Variables captured from the enclosing scope: (name, type)
+        captures: Vec<(String, TypeKind<'src>)>,
+    },
 }
 
 impl<'src> Expr<'src> {
@@ -134,11 +143,13 @@ impl<'src> Expr<'src> {
             Expr::StructInstance { .. } => todo!(),
             Expr::Member { ty, .. } => ty,
             Expr::If { ty, .. } => ty,
+            // TODO: Closure should have another type
+            Expr::Closure { ret_ty, .. } => ret_ty,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind<'src> {
     Ident(Ident<'src>),
     Int,
@@ -146,6 +157,7 @@ pub enum TypeKind<'src> {
     String,
     Bool,
     Void,
+    Fn(Vec<TypeKind<'src>>, Box<TypeKind<'src>>),
 }
 
 impl std::fmt::Display for TypeKind<'_> {
@@ -157,6 +169,16 @@ impl std::fmt::Display for TypeKind<'_> {
             TypeKind::String => write!(f, "string"),
             TypeKind::Bool => write!(f, "bool"),
             TypeKind::Void => write!(f, "void"),
+            TypeKind::Fn(params, ret_ty) => write!(
+                f,
+                "Fn({}) {}",
+                params
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret_ty
+            ),
         }
     }
 }

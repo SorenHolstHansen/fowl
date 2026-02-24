@@ -1,12 +1,19 @@
 use simple.utils.diff
 use std.io.println
 
-fn on int sub(self, _ other: int) int {
-	return self - other
-}
+// GC example
+// fn make_counter() fn() int {
+// 	let mut count = 0
+// 	return fn() int {
+// 		count += 1
+// 		return count
+// 	}
+// }
 
 fn main() void {
-	let d = 2.sub(1)
+	let scalar = 2
+	let a = 4
+	let scale = fn(x: int) int { return scalar * x + a }
 
-	println("diff = {d}")
+	println("diff = {scale(21)}")
 }
