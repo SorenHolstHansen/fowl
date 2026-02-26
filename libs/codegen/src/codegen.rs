@@ -2,7 +2,7 @@ use bir::ast::{self, Program, TypeKind};
 use cranelift::prelude::{isa::TargetIsa, *};
 use cranelift_codegen::{
     Context,
-    ir::{BlockArg, MemFlags, StackSlotData, StackSlotKind, Type},
+    ir::{BlockArg, MemFlags, StackSlot, StackSlotData, StackSlotKind, Type},
 };
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule, ObjectProduct};
@@ -274,7 +274,8 @@ fn type_from_ast(ast_ty: &ast::TypeKind, module: &ObjectModule) -> Option<Type> 
 /// Data needed to compile a closure trampoline.
 struct ClosureIR<'src> {
     mangled_name: String,
-    captures: Vec<(String, ast::TypeKind<'src>)>,
+    /// (name, type, is_mutable) — mutable captures are passed by pointer
+    captures: Vec<(String, ast::TypeKind<'src>, bool)>,
     params: Vec<ast::Param<'src>>,
     ret_ty: ast::TypeKind<'src>,
     body: ast::Block<'src>,
@@ -377,6 +378,12 @@ struct FunctionCompiler<'a> {
     module: &'a mut ObjectModule,
     variables: HashMap<String, Variable>,
     loop_stack: Vec<Loop>,
+    /// Stack slots allocated for mutable captured variables in the outer function.
+    /// When a closure captures a mutable var by reference, its current value is kept here.
+    mutable_capture_slots: HashMap<String, (StackSlot, Type)>,
+    /// Pointer variables for mutable captures inside a trampoline body.
+    /// Maps the capture name to the Variable holding a pointer into the outer stack slot.
+    mutable_capture_ptr_vars: HashMap<String, Variable>,
 }
 
 impl<'a> FunctionCompiler<'a> {
@@ -393,6 +400,8 @@ impl<'a> FunctionCompiler<'a> {
             module,
             variables: HashMap::new(),
             loop_stack: Vec::new(),
+            mutable_capture_slots: HashMap::new(),
+            mutable_capture_ptr_vars: HashMap::new(),
         }
     }
 
@@ -560,17 +569,41 @@ impl<'a> FunctionCompiler<'a> {
             }
         }
 
-        // Load captures from env_ptr at successive pointer-sized offsets
-        for (i, (name, ty)) in closure.captures.iter().enumerate() {
+        // Load captures from env_ptr at successive pointer-sized offsets.
+        // Immutable captures: the slot holds the value directly.
+        // Mutable captures: the slot holds a pointer to the outer stack slot;
+        //   we keep that pointer in a Variable so reads/writes go through it.
+        for (i, (name, ty, is_mutable)) in closure.captures.iter().enumerate() {
             if let Some(cl_ty) = type_from_ast(ty, self.module) {
                 let offset = (i as i32) * ptr_size;
-                let val = self
-                    .builder
-                    .ins()
-                    .load(cl_ty, MemFlags::new(), env_ptr, offset);
-                let var = self.builder.declare_var(cl_ty);
-                self.builder.def_var(var, val);
-                self.variables.insert(name.clone(), var);
+                if *is_mutable {
+                    // Load the pointer to the outer variable's storage
+                    let ptr_val =
+                        self.builder
+                            .ins()
+                            .load(ptr_ty, MemFlags::new(), env_ptr, offset);
+                    let ptr_var = self.builder.declare_var(ptr_ty);
+                    self.builder.def_var(ptr_var, ptr_val);
+                    self.mutable_capture_ptr_vars.insert(name.clone(), ptr_var);
+
+                    // Load the current value through the pointer for SSA reads
+                    let val = self
+                        .builder
+                        .ins()
+                        .load(cl_ty, MemFlags::new(), ptr_val, 0);
+                    let var = self.builder.declare_var(cl_ty);
+                    self.builder.def_var(var, val);
+                    self.variables.insert(name.clone(), var);
+                } else {
+                    // Immutable: value stored directly
+                    let val =
+                        self.builder
+                            .ins()
+                            .load(cl_ty, MemFlags::new(), env_ptr, offset);
+                    let var = self.builder.declare_var(cl_ty);
+                    self.builder.def_var(var, val);
+                    self.variables.insert(name.clone(), var);
+                }
             }
         }
 
@@ -656,8 +689,23 @@ impl<'a> FunctionCompiler<'a> {
             });
 
             let inst = self.builder.ins().call_indirect(sig, fn_ptr, &args);
-            let results = self.builder.inst_results(inst);
-            return results.first().cloned();
+            let ret = self.builder.inst_results(inst).first().cloned();
+
+            // Reload any mutable captured variables from their stack slots —
+            // the closure may have written new values through the stored pointers.
+            let slots: Vec<(String, StackSlot, Type)> = self
+                .mutable_capture_slots
+                .iter()
+                .map(|(n, &(s, t))| (n.clone(), s, t))
+                .collect();
+            for (name, slot, ty) in slots {
+                if let Some(&var) = self.variables.get(&name) {
+                    let val = self.builder.ins().stack_load(ty, slot, 0);
+                    self.builder.def_var(var, val);
+                }
+            }
+
+            return ret;
         }
 
         // Regular (module-level) function call
@@ -875,7 +923,10 @@ impl<'a> FunctionCompiler<'a> {
                     .declare_func_in_func(trampoline_id, self.builder.func);
                 let fn_ptr = self.builder.ins().func_addr(ptr_ty, trampoline_ref);
 
-                // Allocate capture struct on the stack and store each captured value
+                // Allocate capture struct on the stack.
+                // Immutable captures: slot holds the value.
+                // Mutable captures: slot holds a pointer to a dedicated stack slot for that
+                //   variable, so the trampoline can read and write back through the pointer.
                 let env_ptr = if captures.is_empty() {
                     // No captures — pass a null pointer as env
                     self.builder.ins().iconst(ptr_ty, 0)
@@ -885,14 +936,47 @@ impl<'a> FunctionCompiler<'a> {
                         captures.len() as u32 * ptr_size,
                         0,
                     ));
-                    for (i, (name, _ty)) in captures.iter().enumerate() {
-                        let var = *self
-                            .variables
-                            .get(name)
-                            .unwrap_or_else(|| panic!("Captured variable '{name}' not found"));
-                        let val = self.builder.use_var(var);
+                    for (i, (name, _ty, is_mutable)) in captures.iter().enumerate() {
                         let offset = (i as u32 * ptr_size) as i32;
-                        self.builder.ins().stack_store(val, capture_slot, offset);
+                        if *is_mutable {
+                            // Allocate (or reuse) a dedicated stack slot for this variable
+                            let var = *self
+                                .variables
+                                .get(name)
+                                .unwrap_or_else(|| panic!("Captured variable '{name}' not found"));
+                            let cur_val = self.builder.use_var(var);
+                            let val_ty = self.builder.func.dfg.value_type(cur_val);
+
+                            let var_slot =
+                                if let Some(&(s, _)) = self.mutable_capture_slots.get(name) {
+                                    s
+                                } else {
+                                    let s = self.builder.create_sized_stack_slot(
+                                        StackSlotData::new(
+                                            StackSlotKind::ExplicitSlot,
+                                            val_ty.bytes(),
+                                            0,
+                                        ),
+                                    );
+                                    self.mutable_capture_slots.insert(name.clone(), (s, val_ty));
+                                    s
+                                };
+
+                            // Sync current SSA value → stack slot
+                            self.builder.ins().stack_store(cur_val, var_slot, 0);
+                            // Store pointer to the slot in the capture struct
+                            let slot_ptr =
+                                self.builder.ins().stack_addr(ptr_ty, var_slot, 0);
+                            self.builder.ins().stack_store(slot_ptr, capture_slot, offset);
+                        } else {
+                            // Immutable: store the value directly
+                            let var = *self
+                                .variables
+                                .get(name)
+                                .unwrap_or_else(|| panic!("Captured variable '{name}' not found"));
+                            let val = self.builder.use_var(var);
+                            self.builder.ins().stack_store(val, capture_slot, offset);
+                        }
                     }
                     self.builder.ins().stack_addr(ptr_ty, capture_slot, 0)
                 };
@@ -1000,13 +1084,18 @@ impl<'a> FunctionCompiler<'a> {
                     .eval_expr(expr)
                     .expect("Assignment expression must return a value");
 
-                // Get the variable that we're assigning to
+                // If this variable is a mutable capture inside a trampoline,
+                // write back through the stored pointer so the outer function sees the update.
+                if let Some(&ptr_var) = self.mutable_capture_ptr_vars.get(name.inner) {
+                    let ptr = self.builder.use_var(ptr_var);
+                    self.builder.ins().store(MemFlags::new(), value, ptr, 0);
+                }
+
+                // Update the SSA variable
                 let var = self
                     .variables
                     .get(name.inner)
                     .unwrap_or_else(|| panic!("Variable '{}' not found", name.inner));
-
-                // Update the variable
                 self.builder.def_var(*var, value);
                 false
             }

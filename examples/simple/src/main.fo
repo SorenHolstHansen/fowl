@@ -11,9 +11,11 @@ use std.io.println
 // }
 
 fn main() void {
-	let scalar = 2
-	let a = 4
-	let scale = fn(x: int) int { return scalar * x + a }
+	let mut count = 2
+	let inc = fn(amount: int) void { count = count + amount; }
 
-	println("diff = {scale(21)}")
+	inc(1)
+	inc(2)
+
+	println("count = {count}")
 }

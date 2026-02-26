@@ -13,11 +13,16 @@ pub fn bir<'src>(program: a_ast::Program<'src>) -> bir_ast::Program<'src> {
 
 struct BirConverter {
     closure_counter: usize,
+    /// Variables declared with `let mut` in the current scope
+    mutable_vars: HashSet<String>,
 }
 
 impl BirConverter {
     fn new() -> Self {
-        Self { closure_counter: 0 }
+        Self {
+            closure_counter: 0,
+            mutable_vars: HashSet::new(),
+        }
     }
 
     fn next_closure_name(&mut self) -> String {
@@ -79,11 +84,16 @@ impl BirConverter {
                 expr,
                 mutable,
                 ..
-            } => bir_ast::Statement::Let {
-                name: (*name).into(),
-                expr: self.visit_expr(expr),
-                mutable: *mutable,
-            },
+            } => {
+                if *mutable {
+                    self.mutable_vars.insert(name.inner.to_string());
+                }
+                bir_ast::Statement::Let {
+                    name: (*name).into(),
+                    expr: self.visit_expr(expr),
+                    mutable: *mutable,
+                }
+            }
             a_ast::Statement::Assign { name, expr, .. } => bir_ast::Statement::Assign {
                 name: (*name).into(),
                 expr: self.visit_expr(expr),
@@ -167,8 +177,13 @@ impl BirConverter {
                 let mut captured_idents: HashMap<String, bir_ast::TypeKind<'src>> = HashMap::new();
                 collect_idents_in_block(&body, &mut local_vars, &mut captured_idents);
 
-                let captures: Vec<(String, bir_ast::TypeKind<'src>)> =
-                    captured_idents.into_iter().collect();
+                let captures: Vec<(String, bir_ast::TypeKind<'src>, bool)> = captured_idents
+                    .into_iter()
+                    .map(|(name, ty)| {
+                        let is_mutable = self.mutable_vars.contains(&name);
+                        (name, ty, is_mutable)
+                    })
+                    .collect();
 
                 let mangled_name = self.next_closure_name();
 
