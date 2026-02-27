@@ -132,7 +132,7 @@ impl<'src> Lexer<'src> {
     }
 
     pub(crate) fn int(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        let token_text = self.token_text();
+        let token_text = self.token_text().replace("_", "");
         // expecting here, since the regex should only match for things that can actually be parsed.
         // Also, it is not a user error, but a bad regex on out part
         let i = token_text
@@ -142,7 +142,7 @@ impl<'src> Lexer<'src> {
     }
 
     pub(crate) fn float(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        let token_text = self.token_text();
+        let token_text = self.token_text().replace("_", "");
         // expecting here, since the regex should only match for things that can actually be parsed.
         // Also, it is not a user error, but a bad regex on out part
         let f = token_text

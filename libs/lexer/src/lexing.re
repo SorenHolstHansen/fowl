@@ -102,8 +102,8 @@ impl<'src> Lexer<'src> {
         // Literals
         <INIT> "true"                  { return self.token(TokenKind::BoolLiteral(true)) }
         <INIT> "false"                 { return self.token(TokenKind::BoolLiteral(false)) }
-        <INIT> [+-]?[0-9]+             { return self.int() }
-        <INIT> [+-]?[0-9]+ "." [0-9]+  { return self.float() }
+        <INIT> [+-]?[0-9][0-9_]*             { return self.int() }
+        <INIT> [+-]?[0-9][0-9_]* "." [0-9]+  { return self.float() }
 
         // Strings
         <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }

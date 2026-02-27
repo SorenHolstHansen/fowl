@@ -156,7 +156,16 @@ impl BirConverter {
                 then,
                 else_if_blocks,
                 else_block,
-            } => todo!(),
+            } => bir_ast::Expr::If {
+                ty: visit_type(ty),
+                cond: Box::new(self.visit_expr(cond)),
+                then: self.visit_block(then),
+                else_if_blocks: else_if_blocks
+                    .iter()
+                    .map(|(expr, b)| (self.visit_expr(expr), self.visit_block(b)))
+                    .collect(),
+                else_block: else_block.as_ref().map(|b| self.visit_block(b)),
+            },
             a_ast::Expr::Closure(closure) => {
                 let params: Vec<_> = closure
                     .params
@@ -230,7 +239,9 @@ fn collect_idents_in_block<'src>(
             bir_ast::Statement::Assign { expr, .. } => {
                 collect_idents_in_expr(expr, local_vars, out);
             }
-            bir_ast::Statement::Return { expr: Some(expr), .. } => {
+            bir_ast::Statement::Return {
+                expr: Some(expr), ..
+            } => {
                 collect_idents_in_expr(expr, local_vars, out);
             }
             bir_ast::Statement::Expr(expr) => {

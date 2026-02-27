@@ -900,6 +900,8 @@ impl<'src> Parser<'src> {
                 span: expr_span,
             },
             TokenKind::Fn => {
+                // TODO: Allow named closures if they are not assigned to a variable
+
                 // TODO: Make a separate parse_closure_parameters.
                 // We would wan't to not care about labels, and possibly param types
                 let params = self.parse_function_parameters(None)?;
