@@ -80,6 +80,7 @@ Things that are not mentioned above mostly
 - Very nice in production
 - Would be cool, if in dev, we could replay the reason for a crash after it happens, sort of like sentry.
 - Make "interpolated {string}." compile to something like `InterpolatedString[T] { strings: Array[string], args: Array[T] }` that can be easily converted back and forth from string.
+- Module parameters in Jai look fun
 
 ## Interesting blog posts
 
