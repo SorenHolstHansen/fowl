@@ -9,6 +9,11 @@ use std.io.println
 // 		return count
 // 	}
 // }
+//
+// fn main() void {
+// 	 let counter = make_counter();
+//	 let count = counter();
+// }
 
 fn main() void {
 	let n = 600851475143

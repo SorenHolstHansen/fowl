@@ -14,6 +14,7 @@ The basic features are / should be
 - Very fast to compile
 - Decent performance (think js or better)
 - Great debugging experience
+- It should mostly be true, that there is one way to write something.
 
 ## Example
 
