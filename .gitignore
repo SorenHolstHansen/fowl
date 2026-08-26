@@ -1,4 +1,3 @@
 /target
 *.o
 .fowl
-libs/lexer/src/lexing.rs

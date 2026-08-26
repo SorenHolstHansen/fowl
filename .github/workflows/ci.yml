@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lexer_up_to_date:
+    name: Ensure lexer is generated
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download re2rust
+        run: apt-get install re2rust -y
+      - name: Ensure the lexer has been generated
+        run: re2rust libs/lexer/src/lexing.re --output libs/lexer/src/lexing.rs --no-unsafe --start-conditions
+

@@ -1,0 +1,85 @@
+use std::{fmt::Write, path::Path};
+mod token;
+pub use token::{Token, TokenKind};
+mod lexer;
+pub mod lexer_error;
+mod lexing;
+pub use lexer::Lexer;
+
+use crate::lexer_error::{LexerError, LexerErrorKind};
+
+impl<'src> Lexer<'src> {
+    pub fn pretty_string(self) -> String {
+        let mut buf = String::new();
+        pretty_print_tokens(self, &mut buf);
+        buf
+    }
+}
+
+fn pretty_print_tokens<'src>(mut lexer: Lexer<'src>, buf: &mut String) {
+    let mut indent = 0;
+    loop {
+        let token = lexer.next();
+        if let Err(LexerError {
+            kind: LexerErrorKind::EofReached,
+            ..
+        }) = token
+        {
+            break;
+        }
+        match token {
+            Ok(t) => {
+                if let TokenKind::StringInterpolationStart = t.kind {
+                    indent += 2;
+                    writeln!(buf, "{:indent$}-> STRING INTERPOLATION", "").unwrap();
+                } else if let TokenKind::StringInterpolationEnd = t.kind {
+                    writeln!(buf, "{:indent$}<- STRING INTERPOLATION", "").unwrap();
+                    indent -= 2;
+                } else {
+                    writeln!(buf, "{:indent$}{:8} {}", "", t.span, t.kind).unwrap()
+                }
+            }
+            Err(e) => writeln!(buf, "{:indent$}{:8} {}", "", e.span, e.kind).unwrap(),
+        }
+    }
+}
+
+pub fn tokenize<'src>(source: &'src str, path: &'src Path) -> Lexer<'src> {
+    Lexer::new(source, path)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{path::PathBuf, str::FromStr};
+
+    use super::*;
+
+    #[test]
+    fn test_lexer() {
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo").unwrap();
+        let source = include_str!("../../../examples/kitchen_sink.fo");
+
+        let mut lexer = tokenize(source, &path);
+
+        let mut previous = match lexer.next() {
+            Ok(t) => t,
+            Err(e) => panic!("Found lexer error {} {}", e.span, e.kind),
+        };
+
+        loop {
+            let t = lexer.next();
+            match t {
+                Ok(t) => {
+                    assert!(
+                        !t.span.overlaps(previous.span),
+                        "Two spans overlapped. {} {}",
+                        t.span,
+                        previous.span
+                    );
+                    previous = t;
+                }
+                Err(e) => panic!("Found lexer error {} {}", e.span, e.kind),
+            }
+        }
+    }
+}

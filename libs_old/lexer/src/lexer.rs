@@ -1,14 +1,17 @@
+use std::{collections::VecDeque, path::Path};
+
 use crate::{
     Token,
     lexer_error::{LexerError, LexerErrorKind},
     lexing::YYC_INIT,
     token::TokenKind,
 };
-use std::{collections::VecDeque, ops::Range};
+use span::Span;
 
 #[derive(Clone, Debug)]
 pub struct Lexer<'src> {
     pub(crate) input: &'src str,
+    pub(crate) path: &'src Path,
     pub(crate) token: usize,
     pub(crate) cursor: usize,
     pub(crate) marker: usize,
@@ -20,9 +23,10 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
+    pub fn new(source: &'src str, path: &'src Path) -> Self {
         Lexer {
             input: source,
+            path,
             token: 0,
             cursor: 0,
             marker: 0,
@@ -58,8 +62,8 @@ impl<'src> Lexer<'src> {
         self.peek_queue.clear();
     }
 
-    pub(crate) fn span(&self) -> Range<usize> {
-        self.token..self.cursor
+    pub(crate) fn span(&self) -> Span<'src> {
+        Span::new(self.token, self.cursor, self.path, self.input)
     }
 
     pub(crate) fn error(
@@ -73,7 +77,6 @@ impl<'src> Lexer<'src> {
     }
 
     pub(crate) fn token(&mut self, kind: TokenKind<'src>) -> Result<Token<'src>, LexerError<'src>> {
-        // Add semicolons based on go-like heuristics
         let res = Ok(Token {
             kind,
             span: self.span(),
@@ -99,6 +102,11 @@ impl<'src> Lexer<'src> {
                 | TokenKind::Break
                 | TokenKind::Continue
                 | TokenKind::None
+                | TokenKind::Int
+                | TokenKind::Float
+                | TokenKind::String
+                | TokenKind::Bool
+                | TokenKind::Void
                 | TokenKind::Ident(_)
                 | TokenKind::IntLiteral(_)
                 | TokenKind::FloatLiteral(_)
@@ -109,7 +117,7 @@ impl<'src> Lexer<'src> {
                 | TokenKind::RBracket => {
                     self.force_next_token = Some(Token {
                         kind: TokenKind::Semicolon,
-                        span: self.cursor..(self.cursor + 1),
+                        span: Span::new(self.cursor, self.cursor + 1, self.path, self.input),
                     })
                 }
                 _ => {}
@@ -126,17 +134,17 @@ impl<'src> Lexer<'src> {
     pub(crate) fn int(&mut self) -> Result<Token<'src>, LexerError<'src>> {
         let token_text = self.token_text().replace("_", "");
         // expecting here, since the regex should only match for things that can actually be parsed.
-        // Also, it is not a user error, but a bad regex on our part
+        // Also, it is not a user error, but a bad regex on out part
         let i = token_text
             .parse::<i64>()
-            .unwrap_or_else(|_| panic!("Could not parse '{}' as int", token_text));
+            .unwrap_or_else(|_| panic!("Could not parse '{}' as float", token_text));
         self.token(TokenKind::IntLiteral(i))
     }
 
     pub(crate) fn float(&mut self) -> Result<Token<'src>, LexerError<'src>> {
         let token_text = self.token_text().replace("_", "");
         // expecting here, since the regex should only match for things that can actually be parsed.
-        // Also, it is not a user error, but a bad regex on our part
+        // Also, it is not a user error, but a bad regex on out part
         let f = token_text
             .parse::<f64>()
             .unwrap_or_else(|_| panic!("Could not parse '{}' as float", token_text));
@@ -145,5 +153,30 @@ impl<'src> Lexer<'src> {
 
     pub(crate) fn ident(&mut self) -> Result<Token<'src>, LexerError<'src>> {
         self.token(TokenKind::Ident(self.token_text()))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::{path::PathBuf, str::FromStr};
+
+    #[test]
+    fn test_lex2() {
+        let path = PathBuf::from_str("../../../examples/kitchen_sink.fo").unwrap();
+        let source = include_str!("../../../examples/kitchen_sink.fo");
+
+        let mut lexer = Lexer::new(source, &path);
+        loop {
+            let token = lexer.next();
+            match token {
+                Ok(t) => {
+                    println!("TOKEN {} {}", t.span, t.kind);
+                }
+                Err(e) => {
+                    println!("ERROR {}", e.kind);
+                }
+            }
+        }
     }
 }

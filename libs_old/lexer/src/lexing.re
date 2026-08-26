@@ -52,7 +52,7 @@ impl<'src> Lexer<'src> {
         <INIT> "break"                 { return self.token(TokenKind::Break) }
         <INIT> "continue"              { return self.token(TokenKind::Continue) }
         <INIT> "in"                    { return self.token(TokenKind::In) }
-        <INIT> "is"                    { return self.token(TokenKind::Is) }
+        <INIT> "is"                    { return self.token(TokenKind::In) }
         <INIT> "use"                   { return self.token(TokenKind::Use) }
         <INIT> "public"                { return self.token(TokenKind::Public) }
         <INIT> "internal"              { return self.token(TokenKind::Internal) }
@@ -69,6 +69,13 @@ impl<'src> Lexer<'src> {
         <INIT> "on"                    { return self.token(TokenKind::On) }
         <INIT> "self"                    { return self.token(TokenKind::Self_) }
         <INIT> "impl"                    { return self.token(TokenKind::Impl) }
+
+        // Types
+		<INIT> "int"                   { return self.token(TokenKind::Int) }
+		<INIT> "float"                 { return self.token(TokenKind::Float) }
+		<INIT> "string"                { return self.token(TokenKind::String) }
+		<INIT> "bool"                  { return self.token(TokenKind::Bool) }
+		<INIT> "void"                  { return self.token(TokenKind::Void) }
 
         // Operators
         <INIT> "="                     { return self.token(TokenKind::Eq) }
@@ -126,16 +133,17 @@ impl<'src> Lexer<'src> {
         <INIT> "."                     { return self.token(TokenKind::Dot) }
 
         // Line comments
-        <INIT> "//"[^\x00\n]*          { return self.token(TokenKind::Comment(self.token_text())) }
+        <INIT> "//"[^\x00\n]*          { return self.next_internal(use_peek_queue) }
 
         // Whitespace
-        <INIT> [ \t\v\f\n]+              { return self.token(TokenKind::Whitespace(self.token_text())) }
+        <INIT> [ \t\v\f]+              { return self.next_internal(use_peek_queue) }
+        <INIT> "\n"                    { return self.next_internal(use_peek_queue) }
 
         // EOF
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
 
         // Anything else
-        <INIT, STRING> *               { return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) }
+        <INIT, STRING> *               { return self.error(LexerErrorKind::UnexpectedToken(self.token_text())) }
 
         */
     }
