@@ -1,0 +1,4 @@
+struct Foo(
+	foo: String;
+	bar: Bool;
+);
