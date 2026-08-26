@@ -1,3 +1,4 @@
 /target
 *.o
 .fowl
+.DS_Store
