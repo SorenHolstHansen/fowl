@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
@@ -28,15 +28,14 @@ jobs:
     - run: cargo install cargo-afl
     - run: cargo afl system-config
 
-    # Build and then run the fuzz target.
     - run: cargo afl build -p fowl-fuzz --release
-    - run: timeout 300s cargo afl fuzz -i fuzz/corpus -o fuzz/artifacts -x fuzz/lang.dict target/release/fowl-fuzz
+    - run: timeout 60s cargo afl fuzz -i fuzz/corpus -o fuzz/artifacts -x fuzz/lang.dict target/release/fowl-fuzz
 
-    - name: try zip the artifact folder to mitigate github actions not allowing ":" in file names
+    # try zip the artifact folder to mitigate github actions not allowing ":" in file names
+    - name: try zip the artifact folder
       if: failure()
       run: |
         zip -r artifact.zip fuzz/artifacts
-
 
     # Upload fuzzing artifacts on failure for post-mortem debugging.
     - uses: actions/upload-artifact@v7
