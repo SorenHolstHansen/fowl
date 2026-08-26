@@ -58,8 +58,8 @@ pub enum TokenKind<'src> {
     Ident(&'src str),
 
     // Literals
-    /// Int literal
-    IntLiteral(i64),
+    /// Int literal, the str kept as it might parse differently based on the desired int type
+    IntLiteral(&'src str),
     /// Float literal
     FloatLiteral(f64),
     /// Bool literal

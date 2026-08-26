@@ -17,3 +17,24 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --verbose
+
+  fuzz:
+    name: Smoke-Test Fuzz Targets
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # TODO: cache?
+    - run: cargo install cargo-afl
+
+    # Build and then run the fuzz target.
+    - run: cargo afl build -p fowl-fuzz
+    - run: timeout 300s cargo afl fuzz -i fuzz/corpus -o fuzz/artifacts target/debug/fowl-fuzz
+
+    # Upload fuzzing artifacts on failure for post-mortem debugging.
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: fuzzing-artifacts-${{ github.sha }}
+        path: fuzz/artifacts

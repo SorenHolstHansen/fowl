@@ -1,6 +1,7 @@
 [workspace]
 members = [
-  "libs/*"
+  "libs/*",
+  "fuzz"
 ]
 resolver = "3"
 

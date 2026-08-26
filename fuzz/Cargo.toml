@@ -1,0 +1,9 @@
+[package]
+name = "fowl-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+afl = "0.18.2"
+lexer = { path = "../libs/lexer" }

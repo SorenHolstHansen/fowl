@@ -124,13 +124,8 @@ impl<'src> Lexer<'src> {
     }
 
     pub(crate) fn int(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        let token_text = self.token_text().replace("_", "");
-        // expecting here, since the regex should only match for things that can actually be parsed.
-        // Also, it is not a user error, but a bad regex on our part
-        let i = token_text
-            .parse::<i64>()
-            .unwrap_or_else(|_| panic!("Could not parse '{}' as int", token_text));
-        self.token(TokenKind::IntLiteral(i))
+        let token_text = self.token_text();
+        self.token(TokenKind::IntLiteral(token_text))
     }
 
     pub(crate) fn float(&mut self) -> Result<Token<'src>, LexerError<'src>> {

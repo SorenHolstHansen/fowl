@@ -9,6 +9,7 @@ on:
 jobs:
   lexer_up_to_date:
     name: Ensure lexer is generated
+    # Use ubuntu 26.04 to get access to re2rust v4
     runs-on: ubuntu-26.04
 
     steps:
