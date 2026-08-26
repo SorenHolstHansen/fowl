@@ -214,8 +214,8 @@ mod test {
         assert_lexer(
             "0 0000",
             &[
-                (Ok(TokenKind::IntLiteral(0)), "0", 0..1),
-                (Ok(TokenKind::IntLiteral(0)), "0000", 2..6),
+                (Ok(TokenKind::IntLiteral("0")), "0", 0..1),
+                (Ok(TokenKind::IntLiteral("0000")), "0000", 2..6),
             ],
         );
 
@@ -230,13 +230,13 @@ mod test {
         assert_lexer(
             "0_0 00_00 1_000_000",
             &[
-                (Ok(TokenKind::IntLiteral(0)), "0_0", 0..3),
-                (Ok(TokenKind::IntLiteral(0)), "00_00", 4..9),
-                (Ok(TokenKind::IntLiteral(1_000_000)), "1_000_000", 10..19),
+                (Ok(TokenKind::IntLiteral("0_0")), "0_0", 0..3),
+                (Ok(TokenKind::IntLiteral("00_00")), "00_00", 4..9),
+                (Ok(TokenKind::IntLiteral("1_000_000")), "1_000_000", 10..19),
             ],
         );
 
-        assert_lexer("-1", &[(Ok(TokenKind::IntLiteral(-1)), "-1", 0..2)]);
+        assert_lexer("-1", &[(Ok(TokenKind::IntLiteral("-1")), "-1", 0..2)]);
     }
 
     #[test]
@@ -296,7 +296,7 @@ mod test {
             &[
                 (Ok(TokenKind::StringInterpolationStart), "\"", 0..1),
                 (Ok(TokenKind::LBrace), "{", 1..2),
-                (Ok(TokenKind::IntLiteral(1)), "1", 2..3),
+                (Ok(TokenKind::IntLiteral("1")), "1", 2..3),
                 (Ok(TokenKind::RBrace), "}", 3..4),
                 (Ok(TokenKind::StringInterpolationEnd), "\"", 4..5),
             ],
@@ -307,11 +307,11 @@ mod test {
                 (Ok(TokenKind::StringInterpolationStart), "\"", 0..1),
                 (Ok(TokenKind::StringLiteral("hi ")), "hi ", 1..4),
                 (Ok(TokenKind::LBrace), "{", 4..5),
-                (Ok(TokenKind::IntLiteral(1)), "1", 5..6),
+                (Ok(TokenKind::IntLiteral("1")), "1", 5..6),
                 (Ok(TokenKind::RBrace), "}", 6..7),
                 (Ok(TokenKind::StringLiteral(" there ")), " there ", 7..14),
                 (Ok(TokenKind::LBrace), "{", 14..15),
-                (Ok(TokenKind::IntLiteral(2)), "2", 15..16),
+                (Ok(TokenKind::IntLiteral("2")), "2", 15..16),
                 (Ok(TokenKind::RBrace), "}", 16..17),
                 (Ok(TokenKind::StringLiteral(" stop")), " stop", 17..22),
                 (Ok(TokenKind::StringInterpolationEnd), "\"", 22..23),
