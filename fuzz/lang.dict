@@ -7,6 +7,8 @@
 #
 
 keyword_break="break"
+keyword_struct="struct"
+keyword_enum="enum"
 keyword_catch="catch"
 keyword_continue="continue"
 keyword_export="export"

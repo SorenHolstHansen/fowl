@@ -35,7 +35,7 @@ jobs:
     - name: try zip the artifact folder
       if: failure()
       run: |
-        zip -r artifact.zip fuzz/artifacts
+        zip -r artifacts.zip fuzz/artifacts
 
     # Upload fuzzing artifacts on failure for post-mortem debugging.
     - uses: actions/upload-artifact@v7
