@@ -18,7 +18,7 @@ jobs:
       - name: Print re2rust version
         run: re2rust --version
       - name: Generate the lexer
-        run: re2rust libs/lexer/src/lexing.re --output libs/lexer/src/lexing.rs --no-unsafe --start-conditions
+        run: re2rust libs/lexer/src/lexing.re --output libs/lexer/src/lexing.rs --no-unsafe --start-conditions --no-generation-date --no-version --verbose
       - name: Check if there are differences
         run: git diff --exit-code
 
