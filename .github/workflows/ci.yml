@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download re2rust
-        run: apt-get install re2c -y
+        run: sudo apt-get install re2c -y
       - name: Ensure the lexer has been generated
         run: re2rust libs/lexer/src/lexing.re --output libs/lexer/src/lexing.rs --no-unsafe --start-conditions
 
