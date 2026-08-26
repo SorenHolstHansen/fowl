@@ -9,7 +9,7 @@ on:
 jobs:
   lexer_up_to_date:
     name: Ensure lexer is generated
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@v4
