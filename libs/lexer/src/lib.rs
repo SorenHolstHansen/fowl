@@ -8,7 +8,7 @@ pub use lexer::Lexer;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{TokenKind::StringInterpolationStart, lexer_error::LexerErrorKind};
+    use crate::lexer_error::LexerErrorKind;
 
     #[track_caller]
     fn assert_lexer<'src>(

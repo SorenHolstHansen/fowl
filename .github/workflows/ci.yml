@@ -15,6 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download re2rust
         run: sudo apt-get install re2c -y
-      - name: Ensure the lexer has been generated
+      - name: Print re2rust version
+        run: re2rust --version
+      - name: Generate the lexer
         run: re2rust libs/lexer/src/lexing.re --output libs/lexer/src/lexing.rs --no-unsafe --start-conditions
+      - name: Check if there are differences
+        run: git diff --exit-code
 
