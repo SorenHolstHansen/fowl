@@ -119,6 +119,13 @@ impl<'src> Lexer<'src> {
         res
     }
 
+    /// In cases when we get weird characters like 'Ş' with special char boundaries, we can use this method to advance the cursor to the nearest boundary
+    pub(crate) fn find_boundary(&mut self) {
+        while !self.input.is_char_boundary(self.cursor) {
+            self.cursor += 1;
+        }
+    }
+
     pub(crate) fn token_text(&self) -> &'src str {
         &self.input[self.token..self.cursor]
     }

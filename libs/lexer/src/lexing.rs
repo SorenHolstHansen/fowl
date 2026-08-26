@@ -250,7 +250,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            1 => { return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) },
+            1 => { self.find_boundary(); return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) },
             2 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -2659,7 +2659,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            190 => { return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) },
+            190 => { self.find_boundary(); return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) },
             191 => {
                 self.cond = YYC_INIT;
                 { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }

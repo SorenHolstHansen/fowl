@@ -135,7 +135,7 @@ impl<'src> Lexer<'src> {
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
 
         // Anything else
-        <INIT, STRING> *               { return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) }
+        <INIT, STRING> *               { self.find_boundary(); return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) }
 
         */
     }
