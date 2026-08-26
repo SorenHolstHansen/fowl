@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-26.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Download re2rust
         run: sudo apt-get install re2c -y
       - name: Print re2rust version

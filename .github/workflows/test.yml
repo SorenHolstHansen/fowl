@@ -23,18 +23,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - run: cargo install cargo-afl
     - run: cargo afl system-config
 
     # Build and then run the fuzz target.
-    - run: cargo afl build -p fowl-fuzz
-    - run: timeout 300s cargo afl fuzz -i fuzz/corpus -o fuzz/artifacts target/debug/fowl-fuzz
+    - run: cargo afl build -p fowl-fuzz --release
+    - run: timeout 300s cargo afl fuzz -i fuzz/corpus -o fuzz/artifacts -x fuzz/lang.dict target/release/fowl-fuzz
+
+    - name: try zip the artifact folder to mitigate github actions not allowing ":" in file names
+      if: failure()
+      run: |
+        zip -r artifact.zip fuzz/artifacts
+
 
     # Upload fuzzing artifacts on failure for post-mortem debugging.
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: fuzzing-artifacts-${{ github.sha }}
-        path: fuzz/artifacts
+        path: artifacts.zip
