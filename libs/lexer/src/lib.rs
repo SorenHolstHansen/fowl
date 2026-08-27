@@ -338,4 +338,27 @@ mod test {
             ],
         );
     }
+
+    #[test]
+    fn test_special_char_boundary() {
+        assert_lexer(
+            "Ş",
+            &[(Err(LexerErrorKind::UnexpectedCharacter("Ş")), "Ş", 0..2)],
+        );
+        assert_lexer(
+            "\"Ş\"",
+            &[
+                (Ok(TokenKind::StringInterpolationStart), "\"", 0..1),
+                (Ok(TokenKind::StringLiteral("Ş")), "Ş", 1..3),
+                (Ok(TokenKind::StringInterpolationEnd), "\"", 3..4),
+            ],
+        );
+        assert_lexer(
+            "identŞ",
+            &[
+                (Ok(TokenKind::Ident("ident")), "ident", 0..5),
+                (Err(LexerErrorKind::UnexpectedCharacter("Ş")), "Ş", 5..7),
+            ],
+        )
+    }
 }
