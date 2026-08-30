@@ -1,4 +1,4 @@
-use std::ops::Range;
+use span::Span;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenKind<'src> {
@@ -145,8 +145,79 @@ pub enum TokenKind<'src> {
     Eof,
 }
 
-#[derive(Debug, Clone)]
+impl std::fmt::Display for TokenKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Fn => write!(f, "fn"),
+            TokenKind::Let => write!(f, "let"),
+            TokenKind::Return => write!(f, "return"),
+            TokenKind::If => write!(f, "if"),
+            TokenKind::For => write!(f, "for"),
+            TokenKind::Break => write!(f, "break"),
+            TokenKind::Continue => write!(f, "continue"),
+            TokenKind::In => write!(f, "in"),
+            TokenKind::Is => write!(f, "is"),
+            TokenKind::Use => write!(f, "use"),
+            TokenKind::Public => write!(f, "public"),
+            TokenKind::Internal => write!(f, "internal"),
+            TokenKind::Private => write!(f, "private"),
+            TokenKind::None => write!(f, "none"),
+            TokenKind::Try => write!(f, "try"),
+            TokenKind::Catch => write!(f, "catch"),
+            TokenKind::Throw => write!(f, "throw"),
+            TokenKind::Struct => write!(f, "struct"),
+            TokenKind::Enum => write!(f, "enum"),
+            TokenKind::And => write!(f, "and"),
+            TokenKind::Or => write!(f, "or"),
+            TokenKind::Mut => write!(f, "mut"),
+            TokenKind::On => write!(f, "on"),
+            TokenKind::Impl => write!(f, "impl"),
+            TokenKind::Self_ => write!(f, "self"),
+            TokenKind::Ident(ident) => write!(f, "{}", ident),
+            TokenKind::IntLiteral(i) => write!(f, "{}", i),
+            TokenKind::FloatLiteral(n) => write!(f, "{}", n),
+            TokenKind::BoolLiteral(b) => write!(f, "{}", b),
+            TokenKind::StringInterpolationStart => write!(f, "\""),
+            TokenKind::StringInterpolationEnd => write!(f, "\""),
+            TokenKind::StringLiteral(s) => write!(f, "{}", s),
+            TokenKind::Underscore => write!(f, "_"),
+            TokenKind::Colon => write!(f, ":"),
+            TokenKind::Semicolon => write!(f, ";"),
+            TokenKind::LParen => write!(f, "("),
+            TokenKind::RParen => write!(f, ")"),
+            TokenKind::LBrace => write!(f, "{{"),
+            TokenKind::RBrace => write!(f, "}}"),
+            TokenKind::LBracket => write!(f, "["),
+            TokenKind::RBracket => write!(f, "]"),
+            TokenKind::Comma => write!(f, ","),
+            TokenKind::Dot => write!(f, "."),
+            TokenKind::Eq => write!(f, "="),
+            TokenKind::EqEq => write!(f, "=="),
+            TokenKind::Neq => write!(f, "!="),
+            TokenKind::Lt => write!(f, "<"),
+            TokenKind::Gt => write!(f, ">"),
+            TokenKind::LtEq => write!(f, "<="),
+            TokenKind::GtEq => write!(f, ">="),
+            TokenKind::Plus => write!(f, "+"),
+            TokenKind::Minus => write!(f, "-"),
+            TokenKind::Star => write!(f, "*"),
+            TokenKind::StarStar => write!(f, "**"),
+            TokenKind::Slash => write!(f, "/"),
+            TokenKind::Percent => write!(f, "%"),
+            TokenKind::Bang => write!(f, "!"),
+            TokenKind::PlusEq => write!(f, "+="),
+            TokenKind::MinusEq => write!(f, "-="),
+            TokenKind::StarEq => write!(f, "*="),
+            TokenKind::SlashEq => write!(f, "/="),
+            TokenKind::Whitespace(ws) => write!(f, "{}", ws),
+            TokenKind::Comment(c) => write!(f, "{}", c),
+            TokenKind::Eof => write!(f, "EOF"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
-    pub span: Range<usize>,
+    pub span: Span<'src>,
 }

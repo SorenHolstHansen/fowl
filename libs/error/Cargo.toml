@@ -1,5 +1,5 @@
 [package]
-name = "lexer"
+name = "error"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -9,5 +9,5 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-error = { workspace = true }
+ariadne = "0.6.0"
 span = { workspace = true }

@@ -1,5 +1,6 @@
 [package]
-name = "lexer"
+name = "fowl"
+description = "A simple, explicit language"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -8,6 +9,8 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "fowl"
+path = "src/main.rs"
+
 [dependencies]
-error = { workspace = true }
-span = { workspace = true }

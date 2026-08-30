@@ -3,9 +3,11 @@
     re2c:encoding-policy = ignore;
  */
 
+/*!include:re2c "unicode_categories.re" */
+
 #![allow(clippy::all)]
 use super::token::{Token, TokenKind};
-use super::lexer_error::{LexerError, LexerErrorKind};
+use super::lexer_error::{LexerError, UnexpectedCharacter, UnmatchedInterpolation, MissingBrace};
 use super::lexer::Lexer;
 
 #[allow(unused_braces)]
@@ -25,7 +27,7 @@ impl<'src> Lexer<'src> {
             return Ok(forced);
         }
 
-        if self.eof { return self.error(LexerErrorKind::EofReached); }
+        if self.eof { panic!("Eof should have been handled by now"); }
 
         self.token = self.cursor;
 
@@ -42,6 +44,10 @@ impl<'src> Lexer<'src> {
         re2c:define:YYGETCONDITION   = "self.cond";
         re2c:define:YYSETCONDITION   = "self.cond = @@{cond};";
         re2c:eof                     = 0;
+
+        id_start    = L | Nl | [$_];
+        id_continue = id_start | Mn | Mc | Nd | Pc | [\u200D\u05F3];
+        identifier  = id_start id_continue*;
         
         // Keywords
         <INIT> "fn"                    { return self.token(TokenKind::Fn) }
@@ -99,8 +105,20 @@ impl<'src> Lexer<'src> {
         <INIT> [+-]?[0-9][0-9_]* "." [0-9]+  { return self.float() }
 
         // Strings
-        <INIT> "\""                    => STRING { return self.token(TokenKind::StringInterpolationStart); }
-        <STRING> "}"                   { if self.interpolation_depth > 0 { self.interpolation_depth -= 1; self.cond = YYC_STRING; return self.token(TokenKind::RBrace) } else { return self.error(LexerErrorKind::UnmatchedInterpolation(self.token_text())) } }
+        <INIT> "\""                    => STRING { if self.interpolation_depth > 0 {
+                                                return self.error(LexerError::UnmatchedInterpolation(UnmatchedInterpolation {span: self.span(), missing: MissingBrace::Right}))
+                                            } else {
+                                                return self.token(TokenKind::StringInterpolationStart);
+                                            }
+                                       }
+        <STRING> "}"                   { if self.interpolation_depth > 0 {
+                                            self.interpolation_depth -= 1;
+                                            self.cond = YYC_STRING;
+                                            return self.token(TokenKind::RBrace)
+                                        } else {
+                                            return self.error(LexerError::UnmatchedInterpolation(UnmatchedInterpolation {span: self.span(), missing: MissingBrace::Left}))
+                                        }
+                                       }
         <STRING> [^"\\{\\}]+           { return self.token(TokenKind::StringLiteral(self.token_text())) }
         <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(self.token_text())); }
         <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
@@ -111,7 +129,7 @@ impl<'src> Lexer<'src> {
         <INIT> "_"                     { return self.token(TokenKind::Underscore) }
 
         // Identifiers
-        <INIT> [a-zA-Z_] [a-zA-Z_0-9]* { return self.ident() }
+        <INIT> identifier              { return self.ident() }
 
         // Structural
         <INIT> ":"                     { return self.token(TokenKind::Colon) }
@@ -135,7 +153,7 @@ impl<'src> Lexer<'src> {
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }
 
         // Anything else
-        <INIT, STRING> *               { self.find_boundary(); return self.error(LexerErrorKind::UnexpectedCharacter(self.token_text())) }
+        <INIT, STRING> *               { self.find_boundary(); return self.error(LexerError::UnexpectedCharacter(UnexpectedCharacter {span: self.span(), char: self.token_text()})) }
 
         */
     }

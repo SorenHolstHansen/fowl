@@ -1,9 +1,21 @@
 [workspace]
 members = [
+  "fowl",
   "libs/*",
   "fuzz"
 ]
 resolver = "3"
 
+[workspace.package]
+repository = "https://github.com/SorenHolstHansen/fowl"
+readme = "README.md"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.96.0"
+authors = ["Søren Holst Hansen"]
+license = "MIT OR Apache-2.0"
+
 [workspace.dependencies]
+error = { path = "libs/error" }
 lexer = { path = "libs/lexer" }
+span = { path = "libs/span" }

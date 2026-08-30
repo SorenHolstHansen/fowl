@@ -1,0 +1,354 @@
+use span::Span;
+
+#[derive(Debug, Clone)]
+pub struct Program<'src> {
+    pub declarations: Vec<Declaration<'src>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ident<'src> {
+    pub inner: &'src str,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Exp,
+
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+
+    And,
+    Or,
+
+    Bang,
+    Call,
+    StructInstance,
+    // Indexing into a struct instance, i.e. my_struct.my_field
+    FieldIndex,
+}
+
+impl Op {
+    pub fn infix_binding_power(&self) -> Option<(u8, u8)> {
+        let res = match self {
+            Op::And | Op::Or => (3, 4),
+            Op::Ne | Op::Eq | Op::Lt | Op::LtEq | Op::Gt | Op::GtEq => (5, 6),
+            Op::Add | Op::Sub => (7, 8),
+            Op::Mul | Op::Div | Op::Mod => (9, 10),
+            Op::Exp => (11, 12),
+            Op::FieldIndex => (16, 15),
+            _ => return None,
+        };
+        Some(res)
+    }
+
+    pub fn prefix_binding_power(&self) -> ((), u8) {
+        match self {
+            // Op::Return => ((), 1),
+            Op::Bang | Op::Sub => ((), 11),
+            _ => panic!("bad op: {:?}", self),
+        }
+    }
+
+    pub fn postfix_binding_power(&self) -> Option<(u8, ())> {
+        match self {
+            Op::Call => Some((13, ())),
+            Op::StructInstance => Some((15, ())),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Exp,
+
+    // Comparison
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+
+    // Logical
+    And,
+    Or,
+}
+
+impl BinaryOp {
+    pub fn from_op(op: Op) -> Option<BinaryOp> {
+        match op {
+            Op::Add => Some(BinaryOp::Add),
+            Op::Sub => Some(BinaryOp::Sub),
+            Op::Mul => Some(BinaryOp::Mul),
+            Op::Div => Some(BinaryOp::Div),
+            Op::Mod => Some(BinaryOp::Mod),
+            Op::Exp => todo!(),
+            Op::And => Some(BinaryOp::And),
+            Op::Or => Some(BinaryOp::Or),
+            Op::Lt => Some(BinaryOp::Lt),
+            Op::LtEq => Some(BinaryOp::LtEq),
+            Op::Gt => Some(BinaryOp::Gt),
+            Op::GtEq => Some(BinaryOp::GtEq),
+            Op::Ne => Some(BinaryOp::Ne),
+            Op::Eq => Some(BinaryOp::Eq),
+            Op::Bang => todo!(),
+            Op::Call => todo!(),
+            Op::StructInstance => todo!(),
+            Op::FieldIndex => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnaryOp {
+    Neg,
+    Not,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallArg<'src> {
+    pub label: Option<Ident<'src>>,
+    pub expr: Expr<'src>,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Call<'src> {
+    pub callee: Box<Expr<'src>>,
+    pub args: Vec<CallArg<'src>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Closure<'src> {
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: Type<'src>,
+    pub body: Block<'src>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind<'src> {
+    IntLiteral(&'src str),
+    FloatLiteral(f64),
+    BoolLiteral(bool),
+    /// None if empty string
+    StringLiteral(Option<&'src str>),
+    StringInterpolation(Vec<Expr<'src>>),
+    Ident(Ident<'src>),
+    Binary {
+        op: BinaryOp,
+        left: Option<Box<Expr<'src>>>,
+        right: Option<Box<Expr<'src>>>,
+    },
+    // Unary operations
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr<'src>>,
+    },
+
+    Call(Call<'src>),
+    StructInstance {
+        name: Ident<'src>,
+        fields: Vec<(Ident<'src>, Expr<'src>)>, // field name -> value
+    },
+    Member {
+        // TODO: this can possible be a type, i.e. MyType.new()
+        object: Box<Expr<'src>>,
+        field: Ident<'src>,
+    },
+    If {
+        cond: Box<Expr<'src>>,
+        then: Block<'src>,
+        else_if_blocks: Vec<(Expr<'src>, Block<'src>)>,
+        else_block: Option<Block<'src>>,
+    },
+    Closure(Closure<'src>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeKind<'src> {
+    Ident(Ident<'src>),
+    Int,
+    Float,
+    String,
+    Bool,
+    Void,
+}
+
+impl std::fmt::Display for TypeKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeKind::Ident(ident) => write!(f, "{}", ident.inner),
+            TypeKind::Int => write!(f, "int"),
+            TypeKind::Float => write!(f, "float"),
+            TypeKind::String => write!(f, "string"),
+            TypeKind::Bool => write!(f, "bool"),
+            TypeKind::Void => write!(f, "void"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Type<'src> {
+    pub span: Span<'src>,
+    pub kind: TypeKind<'src>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Param<'src> {
+    pub span: Span<'src>,
+    pub name: Option<Ident<'src>>,
+    pub label_ignored: bool,
+    pub ty: Option<Type<'src>>,
+    pub default: Option<Expr<'src>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Block<'src> {
+    pub span: Span<'src>,
+    pub statements: Vec<Statement<'src>>,
+}
+
+impl<'src> Block<'src> {
+    pub fn set_span(mut self, span: Span<'src>) -> Self {
+        self.span = span;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Vis {
+    Public,
+    Internal,
+    Private,
+}
+
+#[derive(Debug, Clone)]
+pub struct Function<'src> {
+    pub span: Span<'src>,
+    pub on: Option<Type<'src>>,
+    pub name: Option<Ident<'src>>,
+    pub params: Vec<Param<'src>>,
+    pub ret_ty: Option<Type<'src>>,
+    pub body: Block<'src>,
+    pub vis: Vis,
+}
+
+impl<'src> Function<'src> {
+    pub fn set_vis(mut self, vis: Vis) -> Self {
+        self.vis = vis;
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariant<'src> {
+    pub span: Span<'src>,
+    pub name: Ident<'src>,
+    pub fields: Vec<Type<'src>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Struct<'src> {
+    pub span: Span<'src>,
+    pub name: Option<Ident<'src>>,
+    pub fields: Vec<(Option<Ident<'src>>, Option<Type<'src>>)>,
+    pub vis: Vis,
+}
+
+#[derive(Debug, Clone)]
+pub struct Enum<'src> {
+    pub span: Span<'src>,
+    pub name: Option<Ident<'src>>,
+    pub variants: Vec<EnumVariant<'src>>,
+    pub vis: Vis,
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement<'src> {
+    Let {
+        name: Option<Ident<'src>>,
+        ty: Option<Type<'src>>,
+        expr: Option<Expr<'src>>,
+        mutable: bool,
+        span: Span<'src>,
+    },
+    Assign {
+        name: Ident<'src>,
+        expr: Option<Expr<'src>>,
+        span: Span<'src>,
+    },
+    Return {
+        span: Span<'src>,
+        expr: Option<Expr<'src>>,
+    },
+    Function(Function<'src>),
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Expr(Expr<'src>),
+    ForLoop {
+        span: Span<'src>,
+        cond: Option<Expr<'src>>,
+        block: Option<Block<'src>>,
+    },
+    Break {
+        span: Span<'src>,
+    },
+    Continue {
+        span: Span<'src>,
+    },
+}
+
+impl<'src> Statement<'src> {
+    pub fn span(&self) -> &Span<'src> {
+        match self {
+            Statement::Let { span, .. } => span,
+            Statement::Assign { span, .. } => span,
+            Statement::Return { span, .. } => span,
+            Statement::Function(function) => &function.span,
+            Statement::Struct(strct) => &strct.span,
+            Statement::Enum(e) => &e.span,
+            Statement::Expr(expr) => &expr.span,
+            Statement::ForLoop { span, .. } => span,
+            Statement::Break { span, .. } => span,
+            Statement::Continue { span, .. } => span,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Use<'src> {
+    pub import: Vec<Ident<'src>>,
+    pub span: Span<'src>,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub enum Declaration<'src> {
+    Struct(Struct<'src>),
+    Enum(Enum<'src>),
+    Function(Function<'src>),
+    Use(Use<'src>),
+}

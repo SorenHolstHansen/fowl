@@ -1,5 +1,5 @@
 [package]
-name = "lexer"
+name = "parser"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -10,4 +10,6 @@ license.workspace = true
 
 [dependencies]
 error = { workspace = true }
+lexer = { workspace = true }
 span = { workspace = true }
+syntree = "0.18.0"

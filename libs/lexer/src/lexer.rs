@@ -1,14 +1,12 @@
-use crate::{
-    Token,
-    lexer_error::{LexerError, LexerErrorKind},
-    lexing::YYC_INIT,
-    token::TokenKind,
-};
-use std::{collections::VecDeque, ops::Range};
+use span::Span;
 
-#[derive(Clone, Debug)]
+use crate::{Token, lexer_error::LexerError, lexing::YYC_INIT, token::TokenKind};
+use std::{collections::VecDeque, path::Path};
+
+#[derive(Clone)]
 pub struct Lexer<'src> {
     pub(crate) input: &'src str,
+    pub(crate) path: &'src Path,
     pub(crate) token: usize,
     pub(crate) cursor: usize,
     pub(crate) marker: usize,
@@ -20,9 +18,13 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
+    /// Creates a new lexer from the source.
+    /// The lexer is sort of like an iterator, in that it doesn't have a `lex` method,
+    /// rather, you advance the lexer by calling `next`
+    pub fn new(source: &'src str, path: &'src Path) -> Self {
         Lexer {
             input: source,
+            path,
             token: 0,
             cursor: 0,
             marker: 0,
@@ -36,6 +38,7 @@ impl<'src> Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
+    /// Peeks ahead to the next token without consuming
     pub fn peek(&mut self) -> &Result<Token<'src>, LexerError<'src>> {
         if !self.peek_queue.is_empty() {
             return self.peek_queue.front().unwrap();
@@ -47,6 +50,7 @@ impl<'src> Lexer<'src> {
         self.peek_queue.front().unwrap()
     }
 
+    /// Peeks one more ahead to the next token without consuming
     pub fn peek_more(&mut self) -> Option<&Result<Token<'src>, LexerError<'src>>> {
         let next = self.next_internal(false);
         self.peek_queue.push_back(next);
@@ -54,22 +58,22 @@ impl<'src> Lexer<'src> {
         self.peek_queue.back()
     }
 
+    /// After peeking, this makes the lexer catch up to the peeked queue
     pub fn catch_up(&mut self) {
         self.peek_queue.clear();
     }
 
-    pub(crate) fn span(&self) -> Range<usize> {
-        self.token..self.cursor
+    /// Get the current lexer span
+    pub(crate) fn span(&self) -> Span<'src> {
+        Span::new(self.token, self.cursor, self.path, self.input)
     }
 
+    /// Report an error
     pub(crate) fn error(
         &mut self,
-        kind: LexerErrorKind<'src>,
+        error: LexerError<'src>,
     ) -> Result<Token<'src>, LexerError<'src>> {
-        Err(LexerError {
-            span: self.span(),
-            kind,
-        })
+        Err(error)
     }
 
     pub(crate) fn token(&mut self, kind: TokenKind<'src>) -> Result<Token<'src>, LexerError<'src>> {
@@ -109,7 +113,7 @@ impl<'src> Lexer<'src> {
                 | TokenKind::RBracket => {
                     self.force_next_token = Some(Token {
                         kind: TokenKind::Semicolon,
-                        span: self.cursor..(self.cursor + 1),
+                        span: Span::new(self.cursor, self.cursor + 1, self.path, self.input),
                     })
                 }
                 _ => {}
