@@ -9,13 +9,21 @@ pub mod colors {
     pub static PRIMARY: Color = Color::BrightGreen;
 }
 
+#[derive(Clone, Debug)]
+enum Element<'src> {
+    Label {
+        message: Cow<'static, str>,
+        span: Span<'src>,
+    },
+    Note(Cow<'static, str>),
+    Help(Cow<'static, str>),
+}
+
 pub struct Diagnostic<'src> {
     pub code: &'static str,
     pub span: Span<'src>,
     pub message: Cow<'static, str>,
-    pub notes: Vec<Cow<'static, str>>,
-    pub help: Vec<Cow<'static, str>>,
-    pub labels: Vec<(Cow<'static, str>, Span<'src>)>,
+    elements: Vec<Element<'src>>,
 }
 
 pub trait IntoDiagnostic<'src> {
@@ -33,14 +41,14 @@ impl<'src, T> ResultExt<'src, T> for Result<T, Diagnostic<'src>> {
     fn add_help<S: Into<Cow<'static, str>>>(self, help: S) -> Result<T, Diagnostic<'src>> {
         match self {
             Ok(ok) => Ok(ok),
-            Err(e) => Err(e.add_help(help)),
+            Err(e) => Err(e.with_help(help)),
         }
     }
 
     fn add_note<S: Into<Cow<'static, str>>>(self, note: S) -> Result<T, Diagnostic<'src>> {
         match self {
             Ok(ok) => Ok(ok),
-            Err(e) => Err(e.add_note(note)),
+            Err(e) => Err(e.with_note(note)),
         }
     }
 
@@ -56,13 +64,35 @@ impl<'src, T> ResultExt<'src, T> for Result<T, Diagnostic<'src>> {
 }
 
 impl<'src> Diagnostic<'src> {
-    pub fn add_help<S: Into<Cow<'static, str>>>(mut self, help: S) -> Diagnostic<'src> {
-        self.help.push(help.into());
+    pub fn new<M: Into<Cow<'static, str>>>(
+        code: &'static str,
+        span: Span<'src>,
+        message: M,
+    ) -> Self {
+        Self {
+            code,
+            span,
+            message: message.into(),
+            elements: Vec::new(),
+        }
+    }
+
+    pub fn with_help<S: Into<Cow<'static, str>>>(mut self, help: S) -> Diagnostic<'src> {
+        self.elements.push(Element::Help(help.into()));
         self
     }
 
-    pub fn add_note<S: Into<Cow<'static, str>>>(mut self, note: S) -> Diagnostic<'src> {
-        self.notes.push(note.into());
+    pub fn with_note<S: Into<Cow<'static, str>>>(mut self, note: S) -> Diagnostic<'src> {
+        self.elements.push(Element::Note(note.into()));
+        self
+    }
+
+    pub fn with_label<M: Into<Cow<'static, str>>>(mut self, message: M, span: Span<'src>) -> Self {
+        self.elements.push(Element::Label {
+            message: message.into(),
+            span,
+        });
+
         self
     }
 
@@ -73,21 +103,24 @@ impl<'src> Diagnostic<'src> {
             .with_code(self.code)
             .with_message(self.message);
 
-        for note in self.notes {
-            report.add_note(note);
-        }
-        for help in self.help {
-            report.add_help(help);
-        }
-        let mut srcs = Vec::with_capacity(self.labels.len());
-        for label in self.labels {
-            let message = label.0;
-            let span = label.1;
-            srcs.push((span.file().display().to_string(), span.source()));
-            let range: std::ops::Range<usize> = span.into();
-            report.add_label(
-                Label::new((span.file().display().to_string(), range)).with_message(message),
-            );
+        let mut srcs = Vec::with_capacity(self.elements.len());
+        for element in &self.elements {
+            match element {
+                Element::Note(note) => {
+                    report.add_note(note);
+                }
+                Element::Help(help) => {
+                    report.add_help(help);
+                }
+                Element::Label { message, span } => {
+                    srcs.push((span.file().display().to_string(), span.source()));
+                    let range: std::ops::Range<usize> = (*span).into();
+                    report.add_label(
+                        Label::new((span.file().display().to_string(), range))
+                            .with_message(message),
+                    );
+                }
+            }
         }
 
         report.finish().eprint(sources(srcs)).unwrap();

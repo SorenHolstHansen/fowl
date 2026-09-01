@@ -8,6 +8,9 @@ pub enum LexerError<'src> {
 
     /// Interpolation was never closed, as in, an unmatched "{"
     UnmatchedInterpolation(UnmatchedInterpolation<'src>),
+
+    /// Eof has already been reached, nothing more to see
+    EofAlreadyReached,
 }
 
 impl<'src> LexerError<'src> {
@@ -15,6 +18,7 @@ impl<'src> LexerError<'src> {
         match self {
             LexerError::UnexpectedCharacter(e) => e.into_diagnostic(),
             LexerError::UnmatchedInterpolation(e) => e.into_diagnostic(),
+            LexerError::EofAlreadyReached => panic!("This should not be called in this case"),
         }
     }
 }
@@ -28,21 +32,13 @@ pub struct UnexpectedCharacter<'src> {
 impl<'src> IntoDiagnostic<'src> for UnexpectedCharacter<'src> {
     #[track_caller]
     fn into_diagnostic(&self) -> Diagnostic<'src> {
-        Diagnostic {
-            span: self.span,
-            message: "unexpected character".into(),
-            code: "E0001",
-            help: vec![],
-            notes: vec![],
-            labels: vec![(
-                format!(
-                    "unexpected character \"{}\"",
-                    self.char.fg(error::colors::PRIMARY)
-                )
-                .into(),
-                self.span,
-            )],
-        }
+        Diagnostic::new("E0001", self.span, "unexpected character").with_label(
+            format!(
+                "unexpected character \"{}\"",
+                self.char.fg(error::colors::PRIMARY)
+            ),
+            self.span,
+        )
     }
 }
 
@@ -61,22 +57,17 @@ pub struct UnmatchedInterpolation<'src> {
 impl<'src> IntoDiagnostic<'src> for UnmatchedInterpolation<'src> {
     #[track_caller]
     fn into_diagnostic(&self) -> Diagnostic<'src> {
-        Diagnostic {
-            span: self.span,
-            message: "unmatched interpolation".into(),
-            code: "E0002",
-            help: vec![match self.missing {
-                MissingBrace::Left => "add an opening '{'".into(),
-                MissingBrace::Right => "add a closing '}'".into(),
-            }],
-            notes: vec![],
-            labels: vec![(
+        Diagnostic::new("E0002", self.span, "unmatched interpolation")
+            .with_help(match self.missing {
+                MissingBrace::Left => "add an opening '{'",
+                MissingBrace::Right => "add a closing '}'",
+            })
+            .with_label(
                 match self.missing {
-                    MissingBrace::Left => "the '}' was never started".into(),
-                    MissingBrace::Right => "the '}' was never closed".into(),
+                    MissingBrace::Left => "the '}' was never started",
+                    MissingBrace::Right => "the '}' was never closed",
                 },
                 self.span,
-            )],
-        }
+            )
     }
 }

@@ -26,7 +26,7 @@ impl<'src> Lexer<'src> {
             return Ok(forced);
         }
 
-        if self.eof { panic!("Eof should have been handled by now"); }
+        if self.eof { return self.error(LexerError::EofAlreadyReached) }
 
         self.token = self.cursor;
 

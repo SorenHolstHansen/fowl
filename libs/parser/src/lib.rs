@@ -1,4 +1,3 @@
-pub mod ast;
 mod errors;
 mod parser;
 pub use parser::Parser;
@@ -10,9 +9,14 @@ mod test {
 
     #[test]
     fn test_parser() {
-        let lexer = Lexer::new("fn", &std::path::Path::new(""));
-        let mut parser = Parser::new(lexer);
-        let ast = parser.parse();
-        dbg!(ast);
+        let src = "fn my_function(gkjh: MyType";
+        let lexer = Lexer::new(src, &std::path::Path::new(""));
+        let parser = Parser::new(lexer);
+        let tree = parser.parse();
+
+        let mut s = Vec::new();
+        syntree::print::print_with_source(&mut s, &tree, src).unwrap();
+        let s = String::from_utf8(s).unwrap();
+        eprintln!("{s}");
     }
 }
