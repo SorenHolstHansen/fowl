@@ -4,6 +4,7 @@ mod lexer;
 pub mod lexer_error;
 mod lexing;
 pub use lexer::Lexer;
+pub use token::INFIX_OPERATORS;
 
 #[cfg(test)]
 mod test {
@@ -15,7 +16,7 @@ mod test {
     #[track_caller]
     fn assert_lexer<'src>(
         source: &'src str,
-        tokens: &[(TokenKind<'src>, &'src str, std::ops::Range<usize>)],
+        tokens: &[(TokenKind, &'src str, std::ops::Range<usize>)],
     ) {
         let mut lexer = Lexer::new(source, std::path::Path::new(""));
 
@@ -23,7 +24,7 @@ mod test {
             let mut next_token = lexer.next();
             while next_token
                 .as_ref()
-                .is_ok_and(|t| matches!(t.kind, TokenKind::Whitespace(_)))
+                .is_ok_and(|t| matches!(t.kind, TokenKind::Whitespace))
             {
                 next_token = lexer.next();
             }
@@ -147,19 +148,16 @@ mod test {
 
     #[test]
     fn test_comment() {
-        assert_lexer("//", &[(TokenKind::Comment("//"), "//", 0..2)]);
+        assert_lexer("//", &[(TokenKind::Comment, "//", 0..2)]);
 
-        assert_lexer(
-            "// testing",
-            &[(TokenKind::Comment("// testing"), "// testing", 0..10)],
-        );
+        assert_lexer("// testing", &[(TokenKind::Comment, "// testing", 0..10)]);
 
         assert_lexer(
             "// comment 1
             // comment 2",
             &[
-                (TokenKind::Comment("// comment 1"), "// comment 1", 0..12),
-                (TokenKind::Comment("// comment 2"), "// comment 2", 25..37),
+                (TokenKind::Comment, "// comment 1", 0..12),
+                (TokenKind::Comment, "// comment 2", 25..37),
             ],
         );
 
@@ -168,29 +166,25 @@ mod test {
             //
             // comment 2",
             &[
-                (TokenKind::Comment("// comment 1"), "// comment 1", 0..12),
-                (TokenKind::Comment("//"), "//", 25..27),
-                (TokenKind::Comment("// comment 2"), "// comment 2", 40..52),
+                (TokenKind::Comment, "// comment 1", 0..12),
+                (TokenKind::Comment, "//", 25..27),
+                (TokenKind::Comment, "// comment 2", 40..52),
             ],
         );
 
         assert_lexer(
             "// comment 1  ",
-            &[(
-                TokenKind::Comment("// comment 1  "),
-                "// comment 1  ",
-                0..14,
-            )],
+            &[(TokenKind::Comment, "// comment 1  ", 0..14)],
         );
     }
 
     #[test]
     fn test_identifier() {
-        assert_lexer("foo", &[(TokenKind::Ident("foo"), "foo", 0..3)]);
-        assert_lexer("FOO", &[(TokenKind::Ident("FOO"), "FOO", 0..3)]);
+        assert_lexer("foo", &[(TokenKind::Ident, "foo", 0..3)]);
+        assert_lexer("FOO", &[(TokenKind::Ident, "FOO", 0..3)]);
         assert_lexer("_", &[(TokenKind::Underscore, "_", 0..1)]);
-        assert_lexer("_1", &[(TokenKind::Ident("_1"), "_1", 0..2)]);
-        assert_lexer("_test1", &[(TokenKind::Ident("_test1"), "_test1", 0..6)]);
+        assert_lexer("_1", &[(TokenKind::Ident, "_1", 0..2)]);
+        assert_lexer("_test1", &[(TokenKind::Ident, "_test1", 0..6)]);
     }
 
     #[test]
@@ -198,29 +192,29 @@ mod test {
         assert_lexer(
             "0 0000",
             &[
-                (TokenKind::IntLiteral("0"), "0", 0..1),
-                (TokenKind::IntLiteral("0000"), "0000", 2..6),
+                (TokenKind::IntLiteral, "0", 0..1),
+                (TokenKind::IntLiteral, "0000", 2..6),
             ],
         );
 
         assert_lexer(
             "10.0 10.123",
             &[
-                (TokenKind::FloatLiteral(10.0), "10.0", 0..4),
-                (TokenKind::FloatLiteral(10.123), "10.123", 5..11),
+                (TokenKind::FloatLiteral, "10.0", 0..4),
+                (TokenKind::FloatLiteral, "10.123", 5..11),
             ],
         );
 
         assert_lexer(
             "0_0 00_00 1_000_000",
             &[
-                (TokenKind::IntLiteral("0_0"), "0_0", 0..3),
-                (TokenKind::IntLiteral("00_00"), "00_00", 4..9),
-                (TokenKind::IntLiteral("1_000_000"), "1_000_000", 10..19),
+                (TokenKind::IntLiteral, "0_0", 0..3),
+                (TokenKind::IntLiteral, "00_00", 4..9),
+                (TokenKind::IntLiteral, "1_000_000", 10..19),
             ],
         );
 
-        assert_lexer("-1", &[(TokenKind::IntLiteral("-1"), "-1", 0..2)]);
+        assert_lexer("-1", &[(TokenKind::IntLiteral, "-1", 0..2)]);
     }
 
     #[test]
@@ -236,7 +230,7 @@ mod test {
             "\"    \"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (TokenKind::StringLiteral("    "), "    ", 1..5),
+                (TokenKind::StringLiteral, "    ", 1..5),
                 (TokenKind::StringInterpolationEnd, "\"", 5..6),
             ],
         );
@@ -245,11 +239,7 @@ mod test {
             "\"hello world\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (
-                    TokenKind::StringLiteral("hello world"),
-                    "hello world",
-                    1..12,
-                ),
+                (TokenKind::StringLiteral, "hello world", 1..12),
                 (TokenKind::StringInterpolationEnd, "\"", 12..13),
             ],
         );
@@ -258,11 +248,7 @@ mod test {
             "\"hello\nworld\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (
-                    TokenKind::StringLiteral("hello\nworld"),
-                    "hello\nworld",
-                    1..12,
-                ),
+                (TokenKind::StringLiteral, "hello\nworld", 1..12),
                 (TokenKind::StringInterpolationEnd, "\"", 12..13),
             ],
         );
@@ -277,7 +263,7 @@ mod test {
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
                 (TokenKind::LBrace, "{", 1..2),
-                (TokenKind::IntLiteral("1"), "1", 2..3),
+                (TokenKind::IntLiteral, "1", 2..3),
                 (TokenKind::RBrace, "}", 3..4),
                 (TokenKind::StringInterpolationEnd, "\"", 4..5),
             ],
@@ -286,15 +272,15 @@ mod test {
             "\"hi {1} there {2} stop\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (TokenKind::StringLiteral("hi "), "hi ", 1..4),
+                (TokenKind::StringLiteral, "hi ", 1..4),
                 (TokenKind::LBrace, "{", 4..5),
-                (TokenKind::IntLiteral("1"), "1", 5..6),
+                (TokenKind::IntLiteral, "1", 5..6),
                 (TokenKind::RBrace, "}", 6..7),
-                (TokenKind::StringLiteral(" there "), " there ", 7..14),
+                (TokenKind::StringLiteral, " there ", 7..14),
                 (TokenKind::LBrace, "{", 14..15),
-                (TokenKind::IntLiteral("2"), "2", 15..16),
+                (TokenKind::IntLiteral, "2", 15..16),
                 (TokenKind::RBrace, "}", 16..17),
-                (TokenKind::StringLiteral(" stop"), " stop", 17..22),
+                (TokenKind::StringLiteral, " stop", 17..22),
                 (TokenKind::StringInterpolationEnd, "\"", 22..23),
             ],
         );
@@ -308,7 +294,7 @@ mod test {
                 (TokenKind::StringInterpolationStart, "\"", 4..5),
                 (TokenKind::LBrace, "{", 5..6),
                 (TokenKind::StringInterpolationStart, "\"", 6..7),
-                (TokenKind::StringLiteral("hi"), "hi", 7..9),
+                (TokenKind::StringLiteral, "hi", 7..9),
                 (TokenKind::StringInterpolationEnd, "\"", 9..10),
                 (TokenKind::RBrace, "}", 10..11),
                 (TokenKind::StringInterpolationEnd, "\"", 11..12),
@@ -322,16 +308,16 @@ mod test {
 
     #[test]
     fn test_special_char_boundary() {
-        assert_lexer("Ş", &[(TokenKind::Ident("Ş"), "Ş", 0..2)]);
+        assert_lexer("Ş", &[(TokenKind::Ident, "Ş", 0..2)]);
         assert_lexer(
             "\"Ş\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (TokenKind::StringLiteral("Ş"), "Ş", 1..3),
+                (TokenKind::StringLiteral, "Ş", 1..3),
                 (TokenKind::StringInterpolationEnd, "\"", 3..4),
             ],
         );
-        assert_lexer("identŞ", &[(TokenKind::Ident("identŞ"), "identŞ", 0..7)])
+        assert_lexer("identŞ", &[(TokenKind::Ident, "identŞ", 0..7)])
     }
 
     #[test]

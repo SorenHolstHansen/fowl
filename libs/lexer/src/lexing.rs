@@ -423,7 +423,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            4 => { return self.token(TokenKind::Whitespace(self.token_text())) },
+            4 => { return self.token(TokenKind::Whitespace) },
             5 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -627,7 +627,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            10 => { return self.ident() },
+            10 => { return self.token(TokenKind::Ident) },
             11 => { return self.token(TokenKind::Percent) },
             12 => { return self.token(TokenKind::LParen) },
             13 => { return self.token(TokenKind::RParen) },
@@ -735,7 +735,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            25 => { return self.int() },
+            25 => { return self.token(TokenKind::IntLiteral) },
             26 => { return self.token(TokenKind::Colon) },
             27 => { return self.token(TokenKind::Semicolon) },
             28 => {
@@ -3789,7 +3789,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            121 => { return self.token(TokenKind::Comment(self.token_text())) },
+            121 => { return self.token(TokenKind::Comment) },
             122 => { return self.token(TokenKind::SlashEq) },
             123 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
@@ -9618,7 +9618,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            391 => { return self.float() },
+            391 => { return self.token(TokenKind::FloatLiteral) },
             392 => {
                 yyaccept = 11;
                 self.marker = self.cursor;
@@ -13448,7 +13448,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            635 => { return self.token(TokenKind::BoolLiteral(true)) },
+            635 => { return self.token(TokenKind::BoolLiteral) },
             636 => {
                 yyaccept = 22;
                 self.marker = self.cursor;
@@ -13537,7 +13537,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            642 => { return self.token(TokenKind::BoolLiteral(false)) },
+            642 => { return self.token(TokenKind::BoolLiteral) },
             643 => {
                 yyaccept = 0;
                 self.marker = self.cursor;
@@ -14029,7 +14029,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            670 => { return self.token(TokenKind::StringLiteral(self.token_text())) },
+            670 => { return self.token(TokenKind::StringLiteral) },
             671 => {
                 self.cond = YYC_INIT;
                 { return self.token(TokenKind::StringInterpolationEnd) }
@@ -14291,7 +14291,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            690 => { return self.token(TokenKind::StringLiteral(self.token_text())); },
+            690 => { return self.token(TokenKind::StringLiteral); },
             691 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {

@@ -9,7 +9,9 @@ mod test {
 
     #[test]
     fn test_parser() {
-        let src = "fn my_function(gkjh: MyType";
+        let src = "fn my_function(gkjh: MyType) Void {
+            let a = 1 + 2;
+        }";
         let lexer = Lexer::new(src, &std::path::Path::new(""));
         let parser = Parser::new(lexer);
         let tree = parser.parse();

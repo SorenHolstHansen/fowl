@@ -99,10 +99,10 @@ impl<'src> Lexer<'src> {
         <INIT> "/="                    { return self.token(TokenKind::SlashEq) }
 
         // Literals
-        <INIT> "true"                  { return self.token(TokenKind::BoolLiteral(true)) }
-        <INIT> "false"                 { return self.token(TokenKind::BoolLiteral(false)) }
-        <INIT> [+-]?[0-9][0-9_]*             { return self.int() }
-        <INIT> [+-]?[0-9][0-9_]* "." [0-9]+  { return self.float() }
+        <INIT> "true"                  { return self.token(TokenKind::BoolLiteral) }
+        <INIT> "false"                 { return self.token(TokenKind::BoolLiteral) }
+        <INIT> [+-]?[0-9][0-9_]*             { return self.token(TokenKind::IntLiteral) }
+        <INIT> [+-]?[0-9][0-9_]* "." [0-9]+  { return self.token(TokenKind::FloatLiteral) }
 
         // Strings
         <INIT> "\""                    => STRING { if self.interpolation_depth > 0 {
@@ -119,8 +119,8 @@ impl<'src> Lexer<'src> {
                                             return self.error(LexerError::UnmatchedInterpolation(UnmatchedInterpolation {span: self.span(), missing: MissingBrace::Left}))
                                         }
                                        }
-        <STRING> [^"\\{\\}]+           { return self.token(TokenKind::StringLiteral(self.token_text())) }
-        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral(self.token_text())); }
+        <STRING> [^"\\{\\}]+           { return self.token(TokenKind::StringLiteral) }
+        <STRING> "\\" .                { return self.token(TokenKind::StringLiteral); }
         <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
         // string end
         <STRING> "\""                  => INIT { return self.token(TokenKind::StringInterpolationEnd) }
@@ -129,7 +129,7 @@ impl<'src> Lexer<'src> {
         <INIT> "_"                     { return self.token(TokenKind::Underscore) }
 
         // Identifiers
-        <INIT> identifier              { return self.ident() }
+        <INIT> identifier              { return self.token(TokenKind::Ident) }
 
         // Structural
         <INIT> ":"                     { return self.token(TokenKind::Colon) }
@@ -144,10 +144,10 @@ impl<'src> Lexer<'src> {
         <INIT> "."                     { return self.token(TokenKind::Dot) }
 
         // Line comments
-        <INIT> "//"[^\x00\n]*          { return self.token(TokenKind::Comment(self.token_text())) }
+        <INIT> "//"[^\x00\n]*          { return self.token(TokenKind::Comment) }
 
         // Whitespace
-        <INIT> [ \t\v\f\n]+              { return self.token(TokenKind::Whitespace(self.token_text())) }
+        <INIT> [ \t\v\f\n]+              { return self.token(TokenKind::Whitespace) }
 
         // EOF
         <INIT, STRING> $               { self.eof = true; return self.token(TokenKind::Eof) }

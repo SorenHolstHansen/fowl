@@ -76,7 +76,7 @@ impl<'src> Lexer<'src> {
         Err(error)
     }
 
-    pub(crate) fn token(&mut self, kind: TokenKind<'src>) -> Result<Token<'src>, LexerError<'src>> {
+    pub(crate) fn token(&mut self, kind: TokenKind) -> Result<Token<'src>, LexerError<'src>> {
         // Add semicolons based on go-like heuristics
         let res = Ok(Token {
             kind,
@@ -103,10 +103,10 @@ impl<'src> Lexer<'src> {
                 | TokenKind::Break
                 | TokenKind::Continue
                 | TokenKind::None
-                | TokenKind::Ident(_)
-                | TokenKind::IntLiteral(_)
-                | TokenKind::FloatLiteral(_)
-                | TokenKind::BoolLiteral(_)
+                | TokenKind::Ident
+                | TokenKind::IntLiteral
+                | TokenKind::FloatLiteral
+                | TokenKind::BoolLiteral
                 | TokenKind::StringInterpolationEnd
                 | TokenKind::RParen
                 | TokenKind::RBrace
@@ -132,24 +132,5 @@ impl<'src> Lexer<'src> {
 
     pub(crate) fn token_text(&self) -> &'src str {
         &self.input[self.token..self.cursor]
-    }
-
-    pub(crate) fn int(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        let token_text = self.token_text();
-        self.token(TokenKind::IntLiteral(token_text))
-    }
-
-    pub(crate) fn float(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        let token_text = self.token_text().replace("_", "");
-        // expecting here, since the regex should only match for things that can actually be parsed.
-        // Also, it is not a user error, but a bad regex on our part
-        let f = token_text
-            .parse::<f64>()
-            .unwrap_or_else(|_| panic!("Could not parse '{}' as float", token_text));
-        self.token(TokenKind::FloatLiteral(f))
-    }
-
-    pub(crate) fn ident(&mut self) -> Result<Token<'src>, LexerError<'src>> {
-        self.token(TokenKind::Ident(self.token_text()))
     }
 }

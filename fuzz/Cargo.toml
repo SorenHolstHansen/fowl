@@ -6,4 +6,5 @@ edition = "2024"
 
 [dependencies]
 afl = "0.18.2"
+parser = { path = "../libs/parser" }
 lexer = { path = "../libs/lexer" }

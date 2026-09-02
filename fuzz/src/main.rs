@@ -3,20 +3,15 @@ extern crate afl;
 use std::path::Path;
 
 use lexer::*;
+use parser::Parser;
 
 fn main() {
     fuzz!(|data: &[u8]| {
         if let Ok(s) = std::str::from_utf8(data) {
-            let mut lexer = Lexer::new(s, Path::new(""));
+            let lexer = Lexer::new(s, Path::new(""));
+            let parser = Parser::new(lexer);
 
-            loop {
-                let next_token = lexer.next();
-                if let Ok(Token { kind, .. }) = next_token
-                    && kind == TokenKind::Eof
-                {
-                    break;
-                }
-            }
+            parser.parse();
         }
     });
 }

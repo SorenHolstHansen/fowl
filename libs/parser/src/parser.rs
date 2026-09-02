@@ -4,26 +4,9 @@ use crate::errors::SyntaxError;
 use error::{Diagnostic, IntoDiagnostic, ResultExt};
 use lexer::{Lexer, Token, TokenKind, lexer_error::LexerError};
 
-#[derive(Clone, Copy, Debug)]
-pub enum Syntax {
-    Declaration,
-    Fn,
-    Vis,
-    Public,
-    Internal,
-    Private,
-    Ident,
-    Whitespace,
-    Comment,
-    Type,
-    FnParameters,
-    FnParam,
-    Self_,
-}
-
 pub struct Parser<'src> {
     lexer: Lexer<'src>,
-    tree: syntree::Builder<Syntax>,
+    tree: syntree::Builder<TokenKind>,
 }
 
 impl<'src> Parser<'src> {
@@ -34,7 +17,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn parse(mut self) -> syntree::Tree<Syntax, syntree::FlavorDefault> {
+    pub fn parse(mut self) -> syntree::Tree<TokenKind, syntree::FlavorDefault> {
         self.parse_internal();
 
         self.tree.build().unwrap()
@@ -64,59 +47,40 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_vis(&mut self) {
+        self.tree.open(TokenKind::Vis).unwrap();
         match self.peek_token() {
             Token {
                 kind: TokenKind::Public,
                 ..
             } => {
-                self.tree.open(Syntax::Vis).unwrap();
-                self.tree.token(Syntax::Public, 6).unwrap();
-                self.tree.close().unwrap();
+                self.tree.token(TokenKind::Public, 6).unwrap();
             }
             Token {
                 kind: TokenKind::Internal,
                 ..
             } => {
-                self.tree.open(Syntax::Vis).unwrap();
-                self.tree.token(Syntax::Internal, 8).unwrap();
-                self.tree.close().unwrap();
+                self.tree.token(TokenKind::Internal, 8).unwrap();
             }
             _ => {
-                self.tree.open(Syntax::Vis).unwrap();
-                self.tree.token(Syntax::Private, 0).unwrap();
-                self.tree.close().unwrap();
+                self.tree.token(TokenKind::Private, 0).unwrap();
             }
         }
+        self.tree.close().unwrap();
     }
 
     fn parse_ident(&mut self) {
-        match self.next_token() {
-            Token {
-                kind: TokenKind::Ident(i),
-                ..
-            } => {
-                self.tree.token(Syntax::Ident, i.len()).unwrap();
-            }
-            Token { kind: _, span } => {
-                SyntaxError {
-                    span,
-                    expected: "a name".into(),
-                }
-                .into_diagnostic()
-                .emit();
-            }
-        };
+        self.expect_token(TokenKind::Ident).emit_ok();
     }
 
     fn parse_type(&mut self) -> Result<(), Diagnostic<'src>> {
         match self.peek_token() {
             Token {
-                kind: TokenKind::Ident(i),
-                ..
+                kind: TokenKind::Ident,
+                span,
             } => {
                 // Skip the peeked ident
                 self.next_token();
-                self.tree.token(Syntax::Type, i.len()).unwrap();
+                self.tree.token(TokenKind::Type, span.len()).unwrap();
             }
             Token { span, .. } => {
                 return Err(SyntaxError {
@@ -132,8 +96,8 @@ impl<'src> Parser<'src> {
 
     fn parse_delim_seq_to_end(
         &mut self,
-        close: TokenKind<'src>,
-        delim: TokenKind<'src>,
+        close: TokenKind,
+        delim: TokenKind,
         mut f: impl FnMut(&mut Parser<'src>) -> Result<(), Diagnostic<'src>>,
     ) {
         loop {
@@ -152,18 +116,25 @@ impl<'src> Parser<'src> {
                 }
             }
 
-            if let Err(e) = self.expect_token(delim) {
-                e.emit();
-                break;
+            match self.expect_one_of_token(&[close, delim]) {
+                Err(e) => {
+                    e.emit();
+                    break;
+                }
+                Ok(t) => {
+                    if t.kind == close {
+                        break;
+                    }
+                }
             }
         }
     }
 
     fn parse_enclosed_delim_seq(
         &mut self,
-        open: TokenKind<'src>,
-        close: TokenKind<'src>,
-        delim: TokenKind<'src>,
+        open: TokenKind,
+        close: TokenKind,
+        delim: TokenKind,
         f: impl FnMut(&mut Parser<'src>) -> Result<(), Diagnostic<'src>>,
     ) {
         match self.expect_token(open) {
@@ -176,17 +147,19 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_fn_param(&mut self) -> Result<(), Diagnostic<'src>> {
-        self.tree.open(Syntax::FnParam).unwrap();
+        self.tree.open(TokenKind::FnParameter).unwrap();
 
         let peeked = self.peek_token();
         match peeked.kind {
             TokenKind::Self_ => {
                 self.next_token();
-                self.tree.token(Syntax::Self_, 4).unwrap();
+                self.tree.token(TokenKind::Self_, 4).unwrap();
             }
-            TokenKind::Ident(i) => {
+            TokenKind::Ident => {
                 self.next_token();
-                self.tree.token(Syntax::Ident, i.len()).unwrap();
+                self.tree
+                    .token(TokenKind::Ident, peeked.span.len())
+                    .unwrap();
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
             }
@@ -206,7 +179,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_fn_parameters(&mut self) {
-        self.tree.open(Syntax::FnParameters).unwrap();
+        self.tree.open(TokenKind::FnParameters).unwrap();
 
         self.parse_enclosed_delim_seq(
             TokenKind::LParen,
@@ -218,10 +191,106 @@ impl<'src> Parser<'src> {
         self.tree.close().unwrap();
     }
 
+    fn parse_prefix_expression(&mut self, precedence: u8) -> Result<(), Diagnostic<'src>> {
+        let token = self.peek_token();
+
+        match token.kind {
+            TokenKind::LParen => {
+                self.tree.open(TokenKind::ParenExpr).unwrap();
+                self.expect_token(TokenKind::LParen)?;
+                self.parse_expression(0)?;
+                self.expect_token(TokenKind::RParen)?;
+                self.tree.close().unwrap();
+            }
+            TokenKind::LBrace => {
+                self.parse_block();
+            }
+            TokenKind::IntLiteral => {
+                self.expect_token(TokenKind::IntLiteral)?;
+            }
+            TokenKind::FloatLiteral => {
+                self.expect_token(TokenKind::FloatLiteral)?;
+            }
+            TokenKind::BoolLiteral => {
+                self.expect_token(TokenKind::BoolLiteral)?;
+            }
+            _ => todo!(),
+        };
+
+        Ok(())
+    }
+
+    fn parse_following_expression(&mut self) -> Result<(), Diagnostic<'src>> {
+        let peeked = self.peek_token();
+        if lexer::INFIX_OPERATORS.iter().any(|o| o == &peeked.kind) {
+            self.tree.open(TokenKind::BinaryOp).unwrap();
+            self.tree.token(peeked.kind, peeked.span.len()).unwrap();
+            self.next_token();
+            self.parse_expression(peeked.kind.precedence())?;
+            self.tree.close().unwrap();
+        }
+        Ok(())
+    }
+
+    fn parse_expression(&mut self, precedence: u8) -> Result<(), Diagnostic<'src>> {
+        let c = self.tree.checkpoint().unwrap();
+
+        self.parse_prefix_expression(precedence)?;
+
+        if self.peek_token().kind == TokenKind::Semicolon {
+            return Ok(());
+        }
+
+        while precedence < self.peek_token().kind.precedence() {
+            self.parse_following_expression()?;
+        }
+
+        self.tree.close_at(&c, TokenKind::Expression).unwrap();
+        Ok(())
+    }
+
+    fn parse_statement(&mut self) -> Result<(), Diagnostic<'src>> {
+        let c = self.tree.checkpoint().unwrap();
+
+        let token = self.peek_token();
+        match token.kind {
+            TokenKind::Let => {
+                // Skip the peeked 'let'
+                self.next_token();
+                self.tree.token(TokenKind::Let, 3).unwrap();
+
+                self.eat_if_token(TokenKind::Mut);
+                self.expect_token(TokenKind::Ident).emit_ok();
+                self.expect_token(TokenKind::Eq).emit_ok();
+                self.parse_expression(0).emit_ok();
+            }
+            _ => {
+                todo!()
+            }
+        }
+
+        self.tree.close_at(&c, TokenKind::Statement).unwrap();
+        Ok(())
+    }
+
+    fn parse_block(&mut self) {
+        self.tree.open(TokenKind::Block).unwrap();
+
+        self.parse_enclosed_delim_seq(
+            TokenKind::LBrace,
+            TokenKind::RBrace,
+            TokenKind::Semicolon,
+            Parser::parse_statement,
+        );
+
+        self.tree.close().unwrap();
+    }
+
     fn parse_function(&mut self) {
+        // Skip the peeked 'fn'
         let _ = self.next_token();
-        self.tree.open(Syntax::Fn).unwrap();
-        self.tree.token(Syntax::Fn, 2).unwrap();
+        let c = self.tree.checkpoint().unwrap();
+        self.tree.token(TokenKind::Fn, 2).unwrap();
 
         let peeked = self.peek_token();
         if peeked.kind == TokenKind::On {
@@ -234,11 +303,17 @@ impl<'src> Parser<'src> {
 
         self.parse_fn_parameters();
 
+        self.tree.open(TokenKind::ReturnType).unwrap();
+        self.parse_type().emit_ok();
         self.tree.close().unwrap();
+
+        self.parse_block();
+
+        self.tree.close_at(&c, TokenKind::Fn).unwrap();
     }
 
     fn parse_declaration(&mut self) {
-        self.tree.open(Syntax::Declaration).unwrap();
+        let c = self.tree.checkpoint().unwrap();
         self.parse_vis();
 
         let t = self.peek_token();
@@ -249,24 +324,24 @@ impl<'src> Parser<'src> {
             _ => todo!(),
         }
 
-        self.tree.close().unwrap();
+        self.tree.close_at(&c, TokenKind::Declaration).unwrap();
     }
 
     /// Eats the next token and returns it
     fn next_token(&mut self) -> Token<'src> {
         match self.lexer.next() {
             Ok(Token {
-                kind: TokenKind::Whitespace(ws),
-                ..
+                kind: TokenKind::Whitespace,
+                span,
             }) => {
-                self.tree.token(Syntax::Whitespace, ws.len()).unwrap();
+                self.tree.token(TokenKind::Whitespace, span.len()).unwrap();
                 self.next_token()
             }
             Ok(Token {
-                kind: TokenKind::Comment(ws),
-                ..
+                kind: TokenKind::Comment,
+                span,
             }) => {
-                self.tree.token(Syntax::Comment, ws.len()).unwrap();
+                self.tree.token(TokenKind::Comment, span.len()).unwrap();
                 self.next_token()
             }
             Ok(t) => t,
@@ -287,19 +362,19 @@ impl<'src> Parser<'src> {
                 self.peek_token()
             }
             Ok(Token {
-                kind: TokenKind::Whitespace(ws),
-                ..
+                kind: TokenKind::Whitespace,
+                span,
             }) => {
                 let _ = self.lexer.next();
-                self.tree.token(Syntax::Whitespace, ws.len()).unwrap();
+                self.tree.token(TokenKind::Whitespace, span.len()).unwrap();
                 self.peek_token()
             }
             Ok(Token {
-                kind: TokenKind::Comment(ws),
-                ..
+                kind: TokenKind::Comment,
+                span,
             }) => {
                 let _ = self.lexer.next();
-                self.tree.token(Syntax::Comment, ws.len()).unwrap();
+                self.tree.token(TokenKind::Comment, span.len()).unwrap();
                 self.peek_token()
             }
             Ok(t) => t,
@@ -307,10 +382,11 @@ impl<'src> Parser<'src> {
     }
 
     /// peeks at the next token, and eats if it it matches `token`, otherwise it returns a `Diagnostic`
-    fn expect_token(&mut self, token: TokenKind<'src>) -> Result<Token<'src>, Diagnostic<'src>> {
+    fn expect_token(&mut self, token: TokenKind) -> Result<Token<'src>, Diagnostic<'src>> {
         match self.peek_token() {
             t if token == t.kind => {
                 self.next_token();
+                self.tree.token(token, t.span.len()).unwrap();
                 Ok(t)
             }
             t => Err(crate::errors::SyntaxError {
@@ -321,13 +397,18 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Eats the token if it is found, otherwise does nothing
+    fn eat_if_token(&mut self, token: TokenKind) {
+        let _ = self.expect_token(token);
+    }
+
     fn expect_one_of_token(
         &mut self,
-        tokens: &[TokenKind<'src>],
+        tokens: &[TokenKind],
     ) -> Result<Token<'src>, Diagnostic<'src>> {
         match self.peek_token() {
             t if tokens.contains(&t.kind) => {
-                let _ = self.next_token();
+                let _ = self.expect_token(t.kind);
                 Ok(t)
             }
             t => Err(crate::errors::SyntaxError {
