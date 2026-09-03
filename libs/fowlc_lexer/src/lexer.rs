@@ -1,4 +1,4 @@
-use span::Span;
+use fowlc_span::Span;
 
 use crate::{Token, lexer_error::LexerError, lexing::YYC_INIT, token::TokenKind};
 use std::{collections::VecDeque, path::Path};

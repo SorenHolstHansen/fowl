@@ -16,6 +16,8 @@ authors = ["Søren Holst Hansen"]
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-error = { path = "libs/error" }
-lexer = { path = "libs/lexer" }
-span = { path = "libs/span" }
+fowlc_error = { path = "libs/fowlc_error" }
+fowlc_manifest = { path = "libs/fowlc_manifest" }
+fowlc_lexer = { path = "libs/fowlc_lexer" }
+fowlc_parser = { path = "libs/fowlc_parser" }
+fowlc_span = { path = "libs/fowlc_span" }

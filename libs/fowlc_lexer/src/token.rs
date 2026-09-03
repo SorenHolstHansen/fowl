@@ -1,4 +1,4 @@
-use span::Span;
+use fowlc_span::Span;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenKind {

@@ -1,5 +1,5 @@
 [package]
-name = "error"
+name = "fowlc_parser"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -9,5 +9,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-ariadne = "0.6.0"
-span = { workspace = true }
+fowlc_error = { workspace = true }
+fowlc_lexer = { workspace = true }
+fowlc_span = { workspace = true }
+syntree = "0.18.0"

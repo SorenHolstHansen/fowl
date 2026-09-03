@@ -1,5 +1,5 @@
-use error::{Diagnostic, Fmt, IntoDiagnostic};
-use span::Span;
+use fowlc_error::{Diagnostic, Fmt, IntoDiagnostic};
+use fowlc_span::Span;
 
 #[derive(Clone, Debug)]
 pub enum LexerError<'src> {
@@ -35,7 +35,7 @@ impl<'src> IntoDiagnostic<'src> for UnexpectedCharacter<'src> {
         Diagnostic::new("E0001", self.span, "unexpected character").with_label(
             format!(
                 "unexpected character \"{}\"",
-                self.char.fg(error::colors::PRIMARY)
+                self.char.fg(fowlc_error::colors::PRIMARY)
             ),
             self.span,
         )

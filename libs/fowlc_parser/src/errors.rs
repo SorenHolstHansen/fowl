@@ -1,5 +1,5 @@
-use error::{Diagnostic, IntoDiagnostic};
-use span::Span;
+use fowlc_error::{Diagnostic, IntoDiagnostic};
+use fowlc_span::Span;
 use std::borrow::Cow;
 
 pub(crate) struct SyntaxError<'src> {

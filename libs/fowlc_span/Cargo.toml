@@ -1,5 +1,5 @@
 [package]
-name = "parser"
+name = "fowlc_span"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -9,7 +9,3 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-error = { workspace = true }
-lexer = { workspace = true }
-span = { workspace = true }
-syntree = "0.18.0"

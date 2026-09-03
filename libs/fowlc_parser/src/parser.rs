@@ -1,8 +1,8 @@
 use std::assert_matches;
 
 use crate::errors::SyntaxError;
-use error::{Diagnostic, IntoDiagnostic, ResultExt};
-use lexer::{Lexer, Token, TokenKind, lexer_error::LexerError};
+use fowlc_error::{Diagnostic, IntoDiagnostic, ResultExt};
+use fowlc_lexer::{Lexer, Token, TokenKind, lexer_error::LexerError};
 
 pub struct Parser<'src> {
     lexer: Lexer<'src>,
@@ -222,7 +222,10 @@ impl<'src> Parser<'src> {
 
     fn parse_following_expression(&mut self) -> Result<(), Diagnostic<'src>> {
         let peeked = self.peek_token();
-        if lexer::INFIX_OPERATORS.iter().any(|o| o == &peeked.kind) {
+        if fowlc_lexer::INFIX_OPERATORS
+            .iter()
+            .any(|o| o == &peeked.kind)
+        {
             self.tree.open(TokenKind::BinaryOp).unwrap();
             self.tree.token(peeked.kind, peeked.span.len()).unwrap();
             self.next_token();

@@ -2,8 +2,8 @@
 extern crate afl;
 use std::path::Path;
 
-use lexer::*;
-use parser::Parser;
+use fowlc_lexer::*;
+use fowlc_parser::Parser;
 
 fn main() {
     fuzz!(|data: &[u8]| {

@@ -1,6 +1,6 @@
 pub use ariadne::Fmt;
 use ariadne::{Label, Report, ReportKind, sources};
-use span::Span;
+use fowlc_span::Span;
 use std::borrow::Cow;
 
 pub mod colors {
