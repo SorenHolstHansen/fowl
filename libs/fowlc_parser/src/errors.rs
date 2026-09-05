@@ -1,4 +1,5 @@
 use fowlc_error::{Diagnostic, IntoDiagnostic};
+use fowlc_lexer::TokenKind;
 use fowlc_span::Span;
 use std::borrow::Cow;
 
@@ -16,21 +17,22 @@ impl<'src> IntoDiagnostic<'src> for SyntaxError<'src> {
     }
 }
 
-pub(crate) struct SelfParamInUnassociatedFunction<'src> {
+pub(crate) struct Unimplemented<'src> {
     pub span: Span<'src>,
+    pub in_function: &'static str,
+    pub token: TokenKind,
 }
 
-impl<'src> IntoDiagnostic<'src> for SelfParamInUnassociatedFunction<'src> {
+impl<'src> IntoDiagnostic<'src> for Unimplemented<'src> {
     fn into_diagnostic(&self) -> Diagnostic<'src> {
         Diagnostic::new(
-            "E0004",
+            "ENA",
             self.span,
-            "`self` parameter is only allowed in associated functions.",
+            format!(
+                "{} not implemented yet for {}",
+                self.in_function, self.token
+            ),
         )
-        .with_label(
-            "`self` parameter is only allowed in associated functions
-              associated functions are those in `impl` or `trait` definitions",
-            self.span,
-        )
+        .with_label("here", self.span)
     }
 }

@@ -1,6 +1,6 @@
 use std::assert_matches;
 
-use crate::errors::SyntaxError;
+use crate::errors::{SyntaxError, Unimplemented};
 use fowlc_error::{Diagnostic, IntoDiagnostic, ResultExt};
 use fowlc_lexer::{Lexer, Token, TokenKind, lexer_error::LexerError};
 
@@ -103,8 +103,7 @@ impl<'src> Parser<'src> {
         loop {
             let peek = self.peek_token();
             if peek.kind == close {
-                // skip the peeked token
-                self.next_token();
+                let _ = self.expect_token(close);
                 break;
             }
 
@@ -214,7 +213,10 @@ impl<'src> Parser<'src> {
             TokenKind::BoolLiteral => {
                 self.expect_token(TokenKind::BoolLiteral)?;
             }
-            _ => todo!(),
+            TokenKind::Ident => {
+                self.parse_ident();
+            }
+            x => panic!("parse_prefix_expression not implemented for {x}"),
         };
 
         Ok(())
@@ -267,8 +269,15 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Eq).emit_ok();
                 self.parse_expression(0).emit_ok();
             }
-            _ => {
-                todo!()
+            TokenKind::Return => {
+                // Skip the peeked 'return'
+                self.next_token();
+
+                self.tree.token(TokenKind::Return, 6).unwrap();
+                self.parse_expression(0).emit_ok();
+            }
+            x => {
+                panic!("parse_statement not implemented for {x}")
             }
         }
 
@@ -324,8 +333,19 @@ impl<'src> Parser<'src> {
 
         match kind {
             TokenKind::Fn => self.parse_function(),
-            _ => todo!(),
+            _ => {
+                Unimplemented {
+                    span: t.span,
+                    in_function: "parse_declaration",
+                    token: t.kind,
+                }
+                .into_diagnostic()
+                .emit();
+                todo!()
+            }
         }
+
+        self.eat_if_token(TokenKind::Semicolon);
 
         self.tree.close_at(&c, TokenKind::Declaration).unwrap();
     }

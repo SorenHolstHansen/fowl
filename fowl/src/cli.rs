@@ -1,13 +1,10 @@
 use anyhow::Result;
 use clap::{Parser as ClapParser, Subcommand};
 use fowlc_lexer::Lexer;
-use fowlc_manifest::Manifest;
-use fowlc_parser::Parser;
+use fowlc_manifest::{Manifest, ManifestDependency, PathDependency};
+use fowlc_parser::{Parser, print_with_source};
 use std::{
-    collections::HashMap,
-    io::Write,
     path::{Path, PathBuf},
-    str::FromStr,
     time::Instant,
 };
 use yansi::Paint;
@@ -51,17 +48,27 @@ impl RunCommand {
     fn run(self) -> Result<()> {
         let cwd = std::env::current_dir()?;
         let root = locate_project_root(&cwd)?;
-        let fowl_jsonc = {
+        let mut fowlc_manifest = {
             let fowl_jsonc_src = std::fs::read_to_string(root.join(FOWL_JSONC_NAME))?;
             Manifest::parse_str(&fowl_jsonc_src)?
         };
         println!(
             "[{}] {} v{}",
             "Building".bright_cyan().bold(),
-            fowl_jsonc.name(),
-            fowl_jsonc.version()
+            fowlc_manifest.name(),
+            fowlc_manifest.version()
         );
         let now = Instant::now();
+
+        let path = cwd.join("src/main.fo");
+        let src_main = std::fs::read_to_string(&path)?;
+        let lexer = Lexer::new(&src_main, &path);
+        let parser = Parser::new(lexer);
+        let tree = parser.parse();
+        let mut s = Vec::new();
+        print_with_source(&mut s, &tree, &src_main).unwrap();
+        let s = String::from_utf8(s).unwrap();
+        eprintln!("{s}");
 
         println!(
             "[{}] in {:.2}s",
@@ -94,4 +101,16 @@ fn locate_project_root(from_path: &Path) -> Result<&Path> {
     Err(anyhow::anyhow!(
         "Could not find {FOWL_JSONC_NAME} in any parent directory"
     ))
+}
+
+fn compiler_root_dir() -> Result<PathBuf> {
+    let relative_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+    Ok(relative_dir.canonicalize()?)
+}
+
+fn fowl_std_path() -> Result<PathBuf> {
+    let compiler_root = compiler_root_dir()?;
+
+    Ok(compiler_root.join("std"))
 }

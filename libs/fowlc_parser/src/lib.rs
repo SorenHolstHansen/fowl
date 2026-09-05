@@ -1,6 +1,7 @@
 mod errors;
 mod parser;
 pub use parser::Parser;
+pub use syntree::print::print_with_source;
 
 #[cfg(test)]
 mod test {

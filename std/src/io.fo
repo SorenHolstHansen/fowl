@@ -1,7 +1,7 @@
-public fn print(_ message: string) void {
+public fn print(_ message: String) Void {
 	// filled in by the compiler
 }
 
-public fn println(_ message: string) void {
+public fn println(_ message: String) Void {
 	print("{message}\n")
 }

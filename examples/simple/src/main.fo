@@ -1,39 +1,5 @@
-use simple.utils.diff
-use std.io.println
-
-// GC example
-// fn make_counter() fn() int {
-// 	let mut count = 0
-// 	return fn() int {
-// 		count += 1
-// 		return count
-// 	}
-// }
-//
-// fn main() void {
-// 	 let counter = make_counter();
-//	 let count = counter();
-// }
-
 fn main() void {
-	let n = 600851475143
-
-	let mut largest_prime_divisor = 1
-	let mut temp = n
-	let mut i = 2
-
-	for (i < n / 2) {
-		if (i > temp) {
-			break;
-		}
-
-		for (temp % i == 0) {
-			largest_prime_divisor = i
-			temp = temp / i
-		}
-
-		i += 1
-	}
-
-	println("largest_prime_divisor = {largest_prime_divisor}")
+	let a = 1;
+	
+	return 2 * a;
 }
