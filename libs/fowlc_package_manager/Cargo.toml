@@ -1,0 +1,14 @@
+[package]
+name = "fowlc_package_manager"
+repository.workspace = true
+readme.workspace = true
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+fowlc_manifest = { workspace = true }
+pubgrub = "0.4.0"
+semver = "1.0.28"

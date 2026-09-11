@@ -53,13 +53,19 @@ impl<'src> Parser<'src> {
                 kind: TokenKind::Public,
                 ..
             } => {
-                self.tree.token(TokenKind::Public, 6).unwrap();
+                let _ = self.expect_token(TokenKind::Public);
             }
             Token {
                 kind: TokenKind::Internal,
                 ..
             } => {
-                self.tree.token(TokenKind::Internal, 8).unwrap();
+                let _ = self.expect_token(TokenKind::Internal);
+            }
+            Token {
+                kind: TokenKind::Private,
+                ..
+            } => {
+                let _ = self.expect_token(TokenKind::Private);
             }
             _ => {
                 self.tree.token(TokenKind::Private, 0).unwrap();
@@ -151,14 +157,16 @@ impl<'src> Parser<'src> {
         let peeked = self.peek_token();
         match peeked.kind {
             TokenKind::Self_ => {
-                self.next_token();
-                self.tree.token(TokenKind::Self_, 4).unwrap();
+                self.expect_token(TokenKind::Self_).unwrap();
+            }
+            TokenKind::Underscore => {
+                self.expect_token(TokenKind::Underscore).unwrap();
+                self.parse_ident();
+                self.expect_token(TokenKind::Colon)?;
+                self.parse_type()?;
             }
             TokenKind::Ident => {
-                self.next_token();
-                self.tree
-                    .token(TokenKind::Ident, peeked.span.len())
-                    .unwrap();
+                self.parse_ident();
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
             }
@@ -277,6 +285,13 @@ impl<'src> Parser<'src> {
                 self.parse_expression(0).emit_ok();
             }
             x => {
+                Unimplemented {
+                    span: token.span,
+                    in_function: "parse_statement",
+                    token: token.kind,
+                }
+                .into_diagnostic()
+                .emit();
                 panic!("parse_statement not implemented for {x}")
             }
         }

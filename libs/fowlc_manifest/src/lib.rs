@@ -1,25 +1,26 @@
 use jsonc_parser::{errors::ParseError, parse_to_serde_value};
-use semver::VersionReq;
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf};
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PathDependency {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ManifestDependency {
     Version(VersionReq),
     Path(PathDependency),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Manifest {
     name: String,
     description: String,
-    version: String,
+    version: Version,
+    #[serde(default)]
     dependencies: HashMap<String, ManifestDependency>,
 }
 
@@ -32,8 +33,12 @@ impl Manifest {
         &self.description
     }
 
-    pub fn version(&self) -> &str {
+    pub fn version(&self) -> &Version {
         &self.version
+    }
+
+    pub fn dependencies(&self) -> &HashMap<String, ManifestDependency> {
+        &self.dependencies
     }
 
     pub fn add_dependency<N: Into<String>>(&mut self, name: N, dependency: ManifestDependency) {

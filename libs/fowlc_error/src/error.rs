@@ -19,6 +19,7 @@ enum Element<'src> {
     Help(Cow<'static, str>),
 }
 
+#[derive(Debug)]
 pub struct Diagnostic<'src> {
     pub code: &'static str,
     pub span: Span<'src>,
@@ -117,7 +118,8 @@ impl<'src> Diagnostic<'src> {
                     let range: std::ops::Range<usize> = (*span).into();
                     report.add_label(
                         Label::new((span.file().display().to_string(), range))
-                            .with_message(message),
+                            .with_message(message)
+                            .with_color(ariadne::Color::BrightCyan),
                     );
                 }
             }

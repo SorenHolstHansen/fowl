@@ -29,10 +29,16 @@ impl<'src> IntoDiagnostic<'src> for Unimplemented<'src> {
             "ENA",
             self.span,
             format!(
-                "{} not implemented yet for {}",
+                "internal function '{}' not implemented yet for token '{}'",
                 self.in_function, self.token
             ),
         )
-        .with_label("here", self.span)
+        .with_label(
+            format!(
+                "internal function '{}' not implemented yet for token '{}'",
+                self.in_function, self.token
+            ),
+            self.span,
+        )
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "fowl"
+name = "fowlc_hir"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -9,13 +9,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = "1.0.104"
-clap = { version = "4.6", features = ["derive"] }
-fowlc_hir = { workspace = true }
-fowlc_manifest = { workspace = true }
-fowlc_lexer = { workspace = true }
 fowlc_package_manager = { workspace = true }
+fowlc_lexer = { workspace = true }
 fowlc_parser = { workspace = true }
-fowlc_span = { workspace = true }
-yansi = "1.0.1"
-semver = "1.0.28"
+walkdir = "2.5.0"
