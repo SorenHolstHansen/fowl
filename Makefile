@@ -1,6 +1,6 @@
 lexer_gen:
-	re2rust libs/lexer/src/lexing.re \
-		--output libs/lexer/src/lexing.rs \
+	re2rust libs/fowlc_lexer/src/lexing.re \
+		--output libs/fowlc_lexer/src/lexing.rs \
 		--no-unsafe \
 		--start-conditions \
 		--no-generation-date \

@@ -627,10 +627,10 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            10 => { return self.token(TokenKind::Ident) },
+            10 => { return self.token(TokenKind::Identifier) },
             11 => { return self.token(TokenKind::Percent) },
-            12 => { return self.token(TokenKind::LParen) },
-            13 => { return self.token(TokenKind::RParen) },
+            12 => { return self.token(TokenKind::LeftParenthesis) },
+            13 => { return self.token(TokenKind::RightParenthesis) },
             14 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -735,7 +735,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            25 => { return self.token(TokenKind::IntLiteral) },
+            25 => { return self.token(TokenKind::IntegerLiteral) },
             26 => { return self.token(TokenKind::Colon) },
             27 => { return self.token(TokenKind::Semicolon) },
             28 => {
@@ -752,7 +752,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            29 => { return self.token(TokenKind::Lt) },
+            29 => { return self.token(TokenKind::LessThan) },
             30 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -767,7 +767,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            31 => { return self.token(TokenKind::Eq) },
+            31 => { return self.token(TokenKind::Equal) },
             32 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -782,9 +782,9 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            33 => { return self.token(TokenKind::Gt) },
-            34 => { return self.token(TokenKind::LBracket) },
-            35 => { return self.token(TokenKind::RBracket) },
+            33 => { return self.token(TokenKind::GreaterThan) },
+            34 => { return self.token(TokenKind::LeftBracket) },
+            35 => { return self.token(TokenKind::RightBracket) },
             36 => {
                 yyaccept = 2;
                 self.marker = self.cursor;
@@ -1158,8 +1158,8 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            53 => { return self.token(TokenKind::LBrace) },
-            54 => { if self.interpolation_depth > 0 { self.cond = YYC_STRING; self.interpolation_depth -= 1; }; return self.token(TokenKind::RBrace) },
+            53 => { return self.token(TokenKind::LeftBrace) },
+            54 => { if self.interpolation_depth > 0 { self.cond = YYC_STRING; self.interpolation_depth -= 1; }; return self.token(TokenKind::RightBrace) },
             55 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -2380,7 +2380,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            84 => { return self.token(TokenKind::Neq) },
+            84 => { return self.token(TokenKind::NotEqual) },
             85 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -3739,9 +3739,9 @@ impl<'src> Lexer<'src> {
                 }
             }
             116 => { return self.token(TokenKind::StarStar) },
-            117 => { return self.token(TokenKind::StarEq) },
-            118 => { return self.token(TokenKind::PlusEq) },
-            119 => { return self.token(TokenKind::MinusEq) },
+            117 => { return self.token(TokenKind::StarEqual) },
+            118 => { return self.token(TokenKind::PlusEqual) },
+            119 => { return self.token(TokenKind::MinusEqual) },
             120 => {
                 yyaccept = 4;
                 self.marker = self.cursor;
@@ -3790,7 +3790,7 @@ impl<'src> Lexer<'src> {
                 }
             }
             121 => { return self.token(TokenKind::Comment) },
-            122 => { return self.token(TokenKind::SlashEq) },
+            122 => { return self.token(TokenKind::SlashEqual) },
             123 => {
                 yych = *self.input.as_bytes().get(self.cursor).unwrap_or(&0);
                 match yych {
@@ -3805,9 +3805,9 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            124 => { return self.token(TokenKind::LtEq) },
-            125 => { return self.token(TokenKind::EqEq) },
-            126 => { return self.token(TokenKind::GtEq) },
+            124 => { return self.token(TokenKind::LessThanOrEqual) },
+            125 => { return self.token(TokenKind::EqualEqual) },
+            126 => { return self.token(TokenKind::GreaterThanOrEqual) },
             127 => {
                 yyaccept = 0;
                 self.marker = self.cursor;
@@ -14089,12 +14089,12 @@ impl<'src> Lexer<'src> {
             673 => { self.find_boundary(); return self.error(LexerError::UnexpectedCharacter(UnexpectedCharacter {span: self.span(), char: self.token_text()})) },
             674 => {
                 self.cond = YYC_INIT;
-                { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
+                { self.interpolation_depth += 1; return self.token(TokenKind::LeftBrace) }
             }
             675 => { if self.interpolation_depth > 0 {
                                             self.interpolation_depth -= 1;
                                             self.cond = YYC_STRING;
-                                            return self.token(TokenKind::RBrace)
+                                            return self.token(TokenKind::RightBrace)
                                         } else {
                                             return self.error(LexerError::UnmatchedInterpolation(UnmatchedInterpolation {span: self.span(), missing: MissingBrace::Left}))
                                         }

@@ -103,17 +103,17 @@ impl<'src> Lexer<'src> {
                 | TokenKind::Break
                 | TokenKind::Continue
                 | TokenKind::None
-                | TokenKind::Ident
-                | TokenKind::IntLiteral
+                | TokenKind::Identifier
+                | TokenKind::IntegerLiteral
                 | TokenKind::FloatLiteral
                 | TokenKind::BoolLiteral
                 | TokenKind::StringInterpolationEnd
-                | TokenKind::RParen
-                | TokenKind::RBrace
-                | TokenKind::RBracket => {
+                | TokenKind::RightParenthesis
+                | TokenKind::RightBrace
+                | TokenKind::RightBracket => {
                     self.force_next_token = Some(Token {
                         kind: TokenKind::Semicolon,
-                        span: Span::new(self.cursor, self.cursor + 1, self.path, self.input),
+                        span: Span::new(self.cursor, self.cursor, self.path, self.input),
                     })
                 }
                 _ => {}

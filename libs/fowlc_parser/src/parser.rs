@@ -28,7 +28,7 @@ impl<'src> Parser<'src> {
             let peeked = self.peek_token();
             if matches!(
                 peeked.kind,
-                TokenKind::RBrace | TokenKind::RParen | TokenKind::Eof
+                TokenKind::RightBrace | TokenKind::RightParenthesis | TokenKind::Eof
             ) {
                 break;
             };
@@ -47,7 +47,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_vis(&mut self) {
-        self.tree.open(TokenKind::Vis).unwrap();
+        self.tree.open(TokenKind::Visibility).unwrap();
         match self.peek_token() {
             Token {
                 kind: TokenKind::Public,
@@ -75,13 +75,13 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_ident(&mut self) {
-        self.expect_token(TokenKind::Ident).emit_ok();
+        self.expect_token(TokenKind::Identifier).emit_ok();
     }
 
     fn parse_type(&mut self) -> Result<(), Diagnostic<'src>> {
         match self.peek_token() {
             Token {
-                kind: TokenKind::Ident,
+                kind: TokenKind::Identifier,
                 span,
             } => {
                 // Skip the peeked ident
@@ -165,7 +165,7 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
             }
-            TokenKind::Ident => {
+            TokenKind::Identifier => {
                 self.parse_ident();
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
@@ -189,8 +189,8 @@ impl<'src> Parser<'src> {
         self.tree.open(TokenKind::FnParameters).unwrap();
 
         self.parse_enclosed_delim_seq(
-            TokenKind::LParen,
-            TokenKind::RParen,
+            TokenKind::LeftParenthesis,
+            TokenKind::RightParenthesis,
             TokenKind::Comma,
             Parser::parse_fn_param,
         );
@@ -198,22 +198,54 @@ impl<'src> Parser<'src> {
         self.tree.close().unwrap();
     }
 
+    fn parse_string_literal_or_interpolation(&mut self) {
+        // TODO: Create a tree node
+        self.expect_token(TokenKind::StringInterpolationStart)
+            .unwrap();
+
+        loop {
+            let peeked = self.peek_token();
+            match peeked.kind {
+                TokenKind::StringLiteral => {
+                    self.expect_token(TokenKind::StringLiteral).emit_ok();
+                }
+                TokenKind::LeftBrace => {
+                    self.expect_token(TokenKind::LeftBrace).emit_ok();
+                    self.parse_expression(0).emit_ok();
+                    self.expect_token(TokenKind::RightBrace).emit_ok();
+                }
+                TokenKind::StringInterpolationEnd => break,
+                _ => {
+                    SyntaxError {
+                        span: peeked.span,
+                        expected: "a string or '{'".into(),
+                    }
+                    .into_diagnostic()
+                    .emit();
+                }
+            };
+        }
+
+        self.expect_token(TokenKind::StringInterpolationEnd)
+            .emit_ok();
+    }
+
     fn parse_prefix_expression(&mut self, precedence: u8) -> Result<(), Diagnostic<'src>> {
         let token = self.peek_token();
 
         match token.kind {
-            TokenKind::LParen => {
+            TokenKind::LeftParenthesis => {
                 self.tree.open(TokenKind::ParenExpr).unwrap();
-                self.expect_token(TokenKind::LParen)?;
+                self.expect_token(TokenKind::LeftParenthesis)?;
                 self.parse_expression(0)?;
-                self.expect_token(TokenKind::RParen)?;
+                self.expect_token(TokenKind::RightParenthesis)?;
                 self.tree.close().unwrap();
             }
-            TokenKind::LBrace => {
+            TokenKind::LeftBrace => {
                 self.parse_block();
             }
-            TokenKind::IntLiteral => {
-                self.expect_token(TokenKind::IntLiteral)?;
+            TokenKind::IntegerLiteral => {
+                self.expect_token(TokenKind::IntegerLiteral)?;
             }
             TokenKind::FloatLiteral => {
                 self.expect_token(TokenKind::FloatLiteral)?;
@@ -221,13 +253,60 @@ impl<'src> Parser<'src> {
             TokenKind::BoolLiteral => {
                 self.expect_token(TokenKind::BoolLiteral)?;
             }
-            TokenKind::Ident => {
+            TokenKind::Identifier => {
                 self.parse_ident();
+                self.parse_ident_expression();
             }
-            x => panic!("parse_prefix_expression not implemented for {x}"),
+            TokenKind::StringInterpolationStart => {
+                self.parse_string_literal_or_interpolation();
+            }
+            x => {
+                Unimplemented {
+                    span: token.span,
+                    in_function: "parse_prefix_expression",
+                    token: token.kind,
+                }
+                .into_diagnostic()
+                .emit();
+                panic!("parse_prefix_expression not implemented for {x}")
+            }
         };
 
         Ok(())
+    }
+
+    fn parse_ident_expression(&mut self) {
+        let peeked = self.peek_token();
+
+        match peeked.kind {
+            TokenKind::LeftParenthesis => {
+                self.parse_call();
+            }
+            TokenKind::RightBrace | TokenKind::Semicolon => {
+                #[allow(clippy::needless_return)]
+                return;
+            }
+            _ => {}
+        }
+    }
+
+    fn parse_call_arguments(&mut self) {
+        self.parse_enclosed_delim_seq(
+            TokenKind::LeftParenthesis,
+            TokenKind::RightParenthesis,
+            TokenKind::Comma,
+            |parser| Parser::parse_expression(parser, 0),
+        );
+    }
+
+    fn parse_call(&mut self) {
+        let c = self.tree.checkpoint().unwrap();
+
+        // TODO: could be somthing like my.lib.some_function(), and not just some_function
+        // self.parse_path();
+        self.parse_call_arguments();
+
+        self.tree.close_at(&c, TokenKind::CallExpression).unwrap();
     }
 
     fn parse_following_expression(&mut self) -> Result<(), Diagnostic<'src>> {
@@ -236,7 +315,7 @@ impl<'src> Parser<'src> {
             .iter()
             .any(|o| o == &peeked.kind)
         {
-            self.tree.open(TokenKind::BinaryOp).unwrap();
+            self.tree.open(TokenKind::BinaryOperator).unwrap();
             self.tree.token(peeked.kind, peeked.span.len()).unwrap();
             self.next_token();
             self.parse_expression(peeked.kind.precedence())?;
@@ -262,6 +341,17 @@ impl<'src> Parser<'src> {
         Ok(())
     }
 
+    fn parse_expression_statement(&mut self) -> Result<(), Diagnostic<'src>> {
+        let c = self.tree.checkpoint().unwrap();
+
+        self.parse_expression(0)?;
+
+        self.expect_token(TokenKind::Semicolon).emit_ok();
+
+        self.tree.close_at(&c, TokenKind::Expression).unwrap();
+        Ok(())
+    }
+
     fn parse_statement(&mut self) -> Result<(), Diagnostic<'src>> {
         let c = self.tree.checkpoint().unwrap();
 
@@ -273,8 +363,8 @@ impl<'src> Parser<'src> {
                 self.tree.token(TokenKind::Let, 3).unwrap();
 
                 self.eat_if_token(TokenKind::Mut);
-                self.expect_token(TokenKind::Ident).emit_ok();
-                self.expect_token(TokenKind::Eq).emit_ok();
+                self.expect_token(TokenKind::Identifier).emit_ok();
+                self.expect_token(TokenKind::Equal).emit_ok();
                 self.parse_expression(0).emit_ok();
             }
             TokenKind::Return => {
@@ -284,15 +374,8 @@ impl<'src> Parser<'src> {
                 self.tree.token(TokenKind::Return, 6).unwrap();
                 self.parse_expression(0).emit_ok();
             }
-            x => {
-                Unimplemented {
-                    span: token.span,
-                    in_function: "parse_statement",
-                    token: token.kind,
-                }
-                .into_diagnostic()
-                .emit();
-                panic!("parse_statement not implemented for {x}")
+            _ => {
+                self.parse_expression_statement();
             }
         }
 
@@ -304,8 +387,8 @@ impl<'src> Parser<'src> {
         self.tree.open(TokenKind::Block).unwrap();
 
         self.parse_enclosed_delim_seq(
-            TokenKind::LBrace,
-            TokenKind::RBrace,
+            TokenKind::LeftBrace,
+            TokenKind::RightBrace,
             TokenKind::Semicolon,
             Parser::parse_statement,
         );

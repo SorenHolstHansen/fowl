@@ -78,12 +78,12 @@ mod test {
         assert_lexer("_", &[(TokenKind::Underscore, "_", 0..1)]);
         assert_lexer(":", &[(TokenKind::Colon, ":", 0..1)]);
         assert_lexer(";", &[(TokenKind::Semicolon, ";", 0..1)]);
-        assert_lexer("(", &[(TokenKind::LParen, "(", 0..1)]);
-        assert_lexer(")", &[(TokenKind::RParen, ")", 0..1)]);
-        assert_lexer("{", &[(TokenKind::LBrace, "{", 0..1)]);
-        assert_lexer("}", &[(TokenKind::RBrace, "}", 0..1)]);
-        assert_lexer("[", &[(TokenKind::LBracket, "[", 0..1)]);
-        assert_lexer("]", &[(TokenKind::RBracket, "]", 0..1)]);
+        assert_lexer("(", &[(TokenKind::LeftParenthesis, "(", 0..1)]);
+        assert_lexer(")", &[(TokenKind::RightParenthesis, ")", 0..1)]);
+        assert_lexer("{", &[(TokenKind::LeftBrace, "{", 0..1)]);
+        assert_lexer("}", &[(TokenKind::RightBrace, "}", 0..1)]);
+        assert_lexer("[", &[(TokenKind::LeftBracket, "[", 0..1)]);
+        assert_lexer("]", &[(TokenKind::RightBracket, "]", 0..1)]);
         assert_lexer(",", &[(TokenKind::Comma, ",", 0..1)]);
         assert_lexer(".", &[(TokenKind::Dot, ".", 0..1)]);
     }
@@ -91,13 +91,13 @@ mod test {
     #[test]
     fn test_operators() {
         // Operators
-        assert_lexer("=", &[(TokenKind::Eq, "=", 0..1)]);
-        assert_lexer("==", &[(TokenKind::EqEq, "==", 0..2)]);
-        assert_lexer("!=", &[(TokenKind::Neq, "!=", 0..2)]);
-        assert_lexer("<", &[(TokenKind::Lt, "<", 0..1)]);
-        assert_lexer(">", &[(TokenKind::Gt, ">", 0..1)]);
-        assert_lexer("<=", &[(TokenKind::LtEq, "<=", 0..2)]);
-        assert_lexer(">=", &[(TokenKind::GtEq, ">=", 0..2)]);
+        assert_lexer("=", &[(TokenKind::Equal, "=", 0..1)]);
+        assert_lexer("==", &[(TokenKind::EqualEqual, "==", 0..2)]);
+        assert_lexer("!=", &[(TokenKind::NotEqual, "!=", 0..2)]);
+        assert_lexer("<", &[(TokenKind::LessThan, "<", 0..1)]);
+        assert_lexer(">", &[(TokenKind::GreaterThan, ">", 0..1)]);
+        assert_lexer("<=", &[(TokenKind::LessThanOrEqual, "<=", 0..2)]);
+        assert_lexer(">=", &[(TokenKind::GreaterThanOrEqual, ">=", 0..2)]);
         assert_lexer("+", &[(TokenKind::Plus, "+", 0..1)]);
         assert_lexer("-", &[(TokenKind::Minus, "-", 0..1)]);
         assert_lexer("*", &[(TokenKind::Star, "*", 0..1)]);
@@ -107,10 +107,10 @@ mod test {
         assert_lexer("!", &[(TokenKind::Bang, "!", 0..1)]);
 
         // Assignment operators
-        assert_lexer("+=", &[(TokenKind::PlusEq, "+=", 0..2)]);
-        assert_lexer("-=", &[(TokenKind::MinusEq, "-=", 0..2)]);
-        assert_lexer("*=", &[(TokenKind::StarEq, "*=", 0..2)]);
-        assert_lexer("/=", &[(TokenKind::SlashEq, "/=", 0..2)]);
+        assert_lexer("+=", &[(TokenKind::PlusEqual, "+=", 0..2)]);
+        assert_lexer("-=", &[(TokenKind::MinusEqual, "-=", 0..2)]);
+        assert_lexer("*=", &[(TokenKind::StarEqual, "*=", 0..2)]);
+        assert_lexer("/=", &[(TokenKind::SlashEqual, "/=", 0..2)]);
     }
 
     #[test]
@@ -118,8 +118,8 @@ mod test {
         assert_lexer(
             "()",
             &[
-                (TokenKind::LParen, "(", 0..1),
-                (TokenKind::RParen, ")", 1..2),
+                (TokenKind::LeftParenthesis, "(", 0..1),
+                (TokenKind::RightParenthesis, ")", 1..2),
             ],
         );
     }
@@ -129,8 +129,8 @@ mod test {
         assert_lexer(
             "[]",
             &[
-                (TokenKind::LBracket, "[", 0..1),
-                (TokenKind::RBracket, "]", 1..2),
+                (TokenKind::LeftBracket, "[", 0..1),
+                (TokenKind::RightBracket, "]", 1..2),
             ],
         );
     }
@@ -140,8 +140,8 @@ mod test {
         assert_lexer(
             "{}",
             &[
-                (TokenKind::LBrace, "{", 0..1),
-                (TokenKind::RBrace, "}", 1..2),
+                (TokenKind::LeftBrace, "{", 0..1),
+                (TokenKind::RightBrace, "}", 1..2),
             ],
         );
     }
@@ -180,11 +180,11 @@ mod test {
 
     #[test]
     fn test_identifier() {
-        assert_lexer("foo", &[(TokenKind::Ident, "foo", 0..3)]);
-        assert_lexer("FOO", &[(TokenKind::Ident, "FOO", 0..3)]);
+        assert_lexer("foo", &[(TokenKind::Identifier, "foo", 0..3)]);
+        assert_lexer("FOO", &[(TokenKind::Identifier, "FOO", 0..3)]);
         assert_lexer("_", &[(TokenKind::Underscore, "_", 0..1)]);
-        assert_lexer("_1", &[(TokenKind::Ident, "_1", 0..2)]);
-        assert_lexer("_test1", &[(TokenKind::Ident, "_test1", 0..6)]);
+        assert_lexer("_1", &[(TokenKind::Identifier, "_1", 0..2)]);
+        assert_lexer("_test1", &[(TokenKind::Identifier, "_test1", 0..6)]);
     }
 
     #[test]
@@ -192,8 +192,8 @@ mod test {
         assert_lexer(
             "0 0000",
             &[
-                (TokenKind::IntLiteral, "0", 0..1),
-                (TokenKind::IntLiteral, "0000", 2..6),
+                (TokenKind::IntegerLiteral, "0", 0..1),
+                (TokenKind::IntegerLiteral, "0000", 2..6),
             ],
         );
 
@@ -208,13 +208,13 @@ mod test {
         assert_lexer(
             "0_0 00_00 1_000_000",
             &[
-                (TokenKind::IntLiteral, "0_0", 0..3),
-                (TokenKind::IntLiteral, "00_00", 4..9),
-                (TokenKind::IntLiteral, "1_000_000", 10..19),
+                (TokenKind::IntegerLiteral, "0_0", 0..3),
+                (TokenKind::IntegerLiteral, "00_00", 4..9),
+                (TokenKind::IntegerLiteral, "1_000_000", 10..19),
             ],
         );
 
-        assert_lexer("-1", &[(TokenKind::IntLiteral, "-1", 0..2)]);
+        assert_lexer("-1", &[(TokenKind::IntegerLiteral, "-1", 0..2)]);
     }
 
     #[test]
@@ -262,9 +262,9 @@ mod test {
             "\"{1}\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (TokenKind::LBrace, "{", 1..2),
-                (TokenKind::IntLiteral, "1", 2..3),
-                (TokenKind::RBrace, "}", 3..4),
+                (TokenKind::LeftBrace, "{", 1..2),
+                (TokenKind::IntegerLiteral, "1", 2..3),
+                (TokenKind::RightBrace, "}", 3..4),
                 (TokenKind::StringInterpolationEnd, "\"", 4..5),
             ],
         );
@@ -273,13 +273,13 @@ mod test {
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
                 (TokenKind::StringLiteral, "hi ", 1..4),
-                (TokenKind::LBrace, "{", 4..5),
-                (TokenKind::IntLiteral, "1", 5..6),
-                (TokenKind::RBrace, "}", 6..7),
+                (TokenKind::LeftBrace, "{", 4..5),
+                (TokenKind::IntegerLiteral, "1", 5..6),
+                (TokenKind::RightBrace, "}", 6..7),
                 (TokenKind::StringLiteral, " there ", 7..14),
-                (TokenKind::LBrace, "{", 14..15),
-                (TokenKind::IntLiteral, "2", 15..16),
-                (TokenKind::RBrace, "}", 16..17),
+                (TokenKind::LeftBrace, "{", 14..15),
+                (TokenKind::IntegerLiteral, "2", 15..16),
+                (TokenKind::RightBrace, "}", 16..17),
                 (TokenKind::StringLiteral, " stop", 17..22),
                 (TokenKind::StringInterpolationEnd, "\"", 22..23),
             ],
@@ -288,19 +288,19 @@ mod test {
             "\"{\"{\"{\"hi\"}\"}\"}\"",
             &[
                 (TokenKind::StringInterpolationStart, "\"", 0..1),
-                (TokenKind::LBrace, "{", 1..2),
+                (TokenKind::LeftBrace, "{", 1..2),
                 (TokenKind::StringInterpolationStart, "\"", 2..3),
-                (TokenKind::LBrace, "{", 3..4),
+                (TokenKind::LeftBrace, "{", 3..4),
                 (TokenKind::StringInterpolationStart, "\"", 4..5),
-                (TokenKind::LBrace, "{", 5..6),
+                (TokenKind::LeftBrace, "{", 5..6),
                 (TokenKind::StringInterpolationStart, "\"", 6..7),
                 (TokenKind::StringLiteral, "hi", 7..9),
                 (TokenKind::StringInterpolationEnd, "\"", 9..10),
-                (TokenKind::RBrace, "}", 10..11),
+                (TokenKind::RightBrace, "}", 10..11),
                 (TokenKind::StringInterpolationEnd, "\"", 11..12),
-                (TokenKind::RBrace, "}", 12..13),
+                (TokenKind::RightBrace, "}", 12..13),
                 (TokenKind::StringInterpolationEnd, "\"", 13..14),
-                (TokenKind::RBrace, "}", 14..15),
+                (TokenKind::RightBrace, "}", 14..15),
                 (TokenKind::StringInterpolationEnd, "\"", 15..16),
             ],
         );
@@ -308,7 +308,7 @@ mod test {
 
     #[test]
     fn test_special_char_boundary() {
-        assert_lexer("Ş", &[(TokenKind::Ident, "Ş", 0..2)]);
+        assert_lexer("Ş", &[(TokenKind::Identifier, "Ş", 0..2)]);
         assert_lexer(
             "\"Ş\"",
             &[
@@ -317,7 +317,7 @@ mod test {
                 (TokenKind::StringInterpolationEnd, "\"", 3..4),
             ],
         );
-        assert_lexer("identŞ", &[(TokenKind::Ident, "identŞ", 0..7)])
+        assert_lexer("identŞ", &[(TokenKind::Identifier, "identŞ", 0..7)])
     }
 
     #[test]

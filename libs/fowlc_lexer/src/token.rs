@@ -55,19 +55,19 @@ pub enum TokenKind {
     Self_,
 
     /// Identifier
-    Ident,
+    Identifier,
 
     // Literals
     /// Int literal, the str kept as it might parse differently based on the desired int type
-    IntLiteral,
+    IntegerLiteral,
     /// Float literal
     FloatLiteral,
     /// Bool literal
     BoolLiteral,
 
-    /// Start of string interpolation
+    /// Start of string interpolation. This is just a '"'
     StringInterpolationStart,
-    /// End of string interpolation
+    /// End of string interpolation. This is just a '"'
     StringInterpolationEnd,
     /// A string literal
     StringLiteral,
@@ -80,17 +80,17 @@ pub enum TokenKind {
     /// token `;`
     Semicolon,
     /// token `(`
-    LParen,
+    LeftParenthesis,
     /// token `)`
-    RParen,
+    RightParenthesis,
     /// token `{`
-    LBrace,
+    LeftBrace,
     /// token `}`
-    RBrace,
+    RightBrace,
     /// token `[`
-    LBracket,
+    LeftBracket,
     /// token `]`
-    RBracket,
+    RightBracket,
     /// token `,`
     Comma,
     /// token `.`
@@ -98,19 +98,19 @@ pub enum TokenKind {
 
     // Operators
     /// token `=`
-    Eq,
+    Equal,
     /// token `==`
-    EqEq,
+    EqualEqual,
     /// token `!=`
-    Neq,
+    NotEqual,
     /// token `<`
-    Lt,
+    LessThan,
     /// token `>`
-    Gt,
+    GreaterThan,
     /// token `<=`
-    LtEq,
+    LessThanOrEqual,
     /// token `>=`
-    GtEq,
+    GreaterThanOrEqual,
     /// token `+`
     Plus,
     /// token `-`
@@ -128,13 +128,13 @@ pub enum TokenKind {
 
     // Assignment operators
     /// token `+=`
-    PlusEq,
+    PlusEqual,
     /// token `-=`
-    MinusEq,
+    MinusEqual,
     /// token `*=`
-    StarEq,
+    StarEqual,
     /// token `/=`
-    SlashEq,
+    SlashEqual,
 
     /// Whitespace
     Whitespace,
@@ -144,7 +144,7 @@ pub enum TokenKind {
 
     /// Non-tokens, but used for ast groups and tokens
     Declaration,
-    Vis,
+    Visibility,
     Type,
     FnParameters,
     FnParameter,
@@ -154,7 +154,8 @@ pub enum TokenKind {
     Expression,
     Operator,
     ParenExpr,
-    BinaryOp,
+    BinaryOperator,
+    CallExpression,
 
     Eof,
 }
@@ -187,8 +188,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::On => write!(f, "on"),
             TokenKind::Impl => write!(f, "impl"),
             TokenKind::Self_ => write!(f, "self"),
-            TokenKind::Ident => write!(f, "identifier"),
-            TokenKind::IntLiteral => write!(f, "int literal"),
+            TokenKind::Identifier => write!(f, "identifier"),
+            TokenKind::IntegerLiteral => write!(f, "int literal"),
             TokenKind::FloatLiteral => write!(f, "float literal"),
             TokenKind::BoolLiteral => write!(f, "bool literal"),
             TokenKind::StringInterpolationStart => write!(f, "\""),
@@ -197,21 +198,21 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Underscore => write!(f, "_"),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Semicolon => write!(f, ";"),
-            TokenKind::LParen => write!(f, "("),
-            TokenKind::RParen => write!(f, ")"),
-            TokenKind::LBrace => write!(f, "{{"),
-            TokenKind::RBrace => write!(f, "}}"),
-            TokenKind::LBracket => write!(f, "["),
-            TokenKind::RBracket => write!(f, "]"),
+            TokenKind::LeftParenthesis => write!(f, "("),
+            TokenKind::RightParenthesis => write!(f, ")"),
+            TokenKind::LeftBrace => write!(f, "{{"),
+            TokenKind::RightBrace => write!(f, "}}"),
+            TokenKind::LeftBracket => write!(f, "["),
+            TokenKind::RightBracket => write!(f, "]"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::Dot => write!(f, "."),
-            TokenKind::Eq => write!(f, "="),
-            TokenKind::EqEq => write!(f, "=="),
-            TokenKind::Neq => write!(f, "!="),
-            TokenKind::Lt => write!(f, "<"),
-            TokenKind::Gt => write!(f, ">"),
-            TokenKind::LtEq => write!(f, "<="),
-            TokenKind::GtEq => write!(f, ">="),
+            TokenKind::Equal => write!(f, "="),
+            TokenKind::EqualEqual => write!(f, "=="),
+            TokenKind::NotEqual => write!(f, "!="),
+            TokenKind::LessThan => write!(f, "<"),
+            TokenKind::GreaterThan => write!(f, ">"),
+            TokenKind::LessThanOrEqual => write!(f, "<="),
+            TokenKind::GreaterThanOrEqual => write!(f, ">="),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Star => write!(f, "*"),
@@ -219,14 +220,14 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Slash => write!(f, "/"),
             TokenKind::Percent => write!(f, "%"),
             TokenKind::Bang => write!(f, "!"),
-            TokenKind::PlusEq => write!(f, "+="),
-            TokenKind::MinusEq => write!(f, "-="),
-            TokenKind::StarEq => write!(f, "*="),
-            TokenKind::SlashEq => write!(f, "/="),
+            TokenKind::PlusEqual => write!(f, "+="),
+            TokenKind::MinusEqual => write!(f, "-="),
+            TokenKind::StarEqual => write!(f, "*="),
+            TokenKind::SlashEqual => write!(f, "/="),
             TokenKind::Whitespace => write!(f, "whitespace"),
             TokenKind::Comment => write!(f, "comment"),
             TokenKind::Declaration => write!(f, "declaration"),
-            TokenKind::Vis => write!(f, "visibility"),
+            TokenKind::Visibility => write!(f, "visibility"),
             TokenKind::Type => write!(f, "type"),
             TokenKind::FnParameters => write!(f, "function parameters"),
             TokenKind::FnParameter => write!(f, "function parameter"),
@@ -236,7 +237,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Expression => write!(f, "expression"),
             TokenKind::Operator => write!(f, "operator"),
             TokenKind::ParenExpr => write!(f, "parenthesised expression"),
-            TokenKind::BinaryOp => write!(f, "binary oparation"),
+            TokenKind::BinaryOperator => write!(f, "binary oparation"),
+            TokenKind::CallExpression => write!(f, "call expression"),
             TokenKind::Eof => write!(f, "EOF"),
         }
     }
@@ -249,24 +251,24 @@ pub const INFIX_OPERATORS: &[TokenKind] = &[
     TokenKind::Minus,
     TokenKind::Star,
     TokenKind::Slash,
-    TokenKind::EqEq,
-    TokenKind::Lt,
-    TokenKind::LtEq,
-    TokenKind::Gt,
-    TokenKind::GtEq,
+    TokenKind::EqualEqual,
+    TokenKind::LessThan,
+    TokenKind::LessThanOrEqual,
+    TokenKind::GreaterThan,
+    TokenKind::GreaterThanOrEqual,
 ];
 
 pub const OPERATOR_PRECEDENCE: &[(TokenKind, u8)] = &[
-    (TokenKind::Eq, 1),
-    (TokenKind::PlusEq, 1),
-    (TokenKind::MinusEq, 1),
-    (TokenKind::StarEq, 1),
-    (TokenKind::SlashEq, 1),
-    (TokenKind::EqEq, 4),
-    (TokenKind::Lt, 5),
-    (TokenKind::Gt, 5),
-    (TokenKind::LtEq, 6),
-    (TokenKind::GtEq, 6),
+    (TokenKind::Equal, 1),
+    (TokenKind::PlusEqual, 1),
+    (TokenKind::MinusEqual, 1),
+    (TokenKind::StarEqual, 1),
+    (TokenKind::SlashEqual, 1),
+    (TokenKind::EqualEqual, 4),
+    (TokenKind::LessThan, 5),
+    (TokenKind::GreaterThan, 5),
+    (TokenKind::LessThanOrEqual, 6),
+    (TokenKind::GreaterThanOrEqual, 6),
     (TokenKind::Plus, 7),
     (TokenKind::Minus, 7),
     (TokenKind::Star, 8),

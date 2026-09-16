@@ -16,7 +16,7 @@ pub fn lower_to_hir(package: Package) {
             let mut s = Vec::new();
             print_with_source(&mut s, &tree, &src_main).unwrap();
             let s = String::from_utf8(s).unwrap();
-            eprintln!("{s}");
+            println!("package: {}. file: {:?}\n{s}", package.name, path);
         }
     }
 }

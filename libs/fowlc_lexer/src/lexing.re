@@ -77,13 +77,13 @@ impl<'src> Lexer<'src> {
         <INIT> "impl"                    { return self.token(TokenKind::Impl) }
 
         // Operators
-        <INIT> "="                     { return self.token(TokenKind::Eq) }
-        <INIT> "=="                    { return self.token(TokenKind::EqEq) }
-        <INIT> "!="                    { return self.token(TokenKind::Neq) }
-        <INIT> "<"                     { return self.token(TokenKind::Lt) }
-        <INIT> ">"                     { return self.token(TokenKind::Gt) }
-        <INIT> "<="                    { return self.token(TokenKind::LtEq) }
-        <INIT> ">="                    { return self.token(TokenKind::GtEq) }
+        <INIT> "="                     { return self.token(TokenKind::Equal) }
+        <INIT> "=="                    { return self.token(TokenKind::EqualEqual) }
+        <INIT> "!="                    { return self.token(TokenKind::NotEqual) }
+        <INIT> "<"                     { return self.token(TokenKind::LessThan) }
+        <INIT> ">"                     { return self.token(TokenKind::GreaterThan) }
+        <INIT> "<="                    { return self.token(TokenKind::LessThanOrEqual) }
+        <INIT> ">="                    { return self.token(TokenKind::GreaterThanOrEqual) }
         <INIT> "+"                     { return self.token(TokenKind::Plus) }
         <INIT> "-"                     { return self.token(TokenKind::Minus) }
         <INIT> "*"                     { return self.token(TokenKind::Star) }
@@ -93,15 +93,15 @@ impl<'src> Lexer<'src> {
         <INIT> "!"                     { return self.token(TokenKind::Bang) }
 
         // Assignment operators
-        <INIT> "+="                    { return self.token(TokenKind::PlusEq) }
-        <INIT> "-="                    { return self.token(TokenKind::MinusEq) }
-        <INIT> "*="                    { return self.token(TokenKind::StarEq) }
-        <INIT> "/="                    { return self.token(TokenKind::SlashEq) }
+        <INIT> "+="                    { return self.token(TokenKind::PlusEqual) }
+        <INIT> "-="                    { return self.token(TokenKind::MinusEqual) }
+        <INIT> "*="                    { return self.token(TokenKind::StarEqual) }
+        <INIT> "/="                    { return self.token(TokenKind::SlashEqual) }
 
         // Literals
         <INIT> "true"                  { return self.token(TokenKind::BoolLiteral) }
         <INIT> "false"                 { return self.token(TokenKind::BoolLiteral) }
-        <INIT> [+-]?[0-9][0-9_]*             { return self.token(TokenKind::IntLiteral) }
+        <INIT> [+-]?[0-9][0-9_]*             { return self.token(TokenKind::IntegerLiteral) }
         <INIT> [+-]?[0-9][0-9_]* "." [0-9]+  { return self.token(TokenKind::FloatLiteral) }
 
         // Strings
@@ -114,14 +114,14 @@ impl<'src> Lexer<'src> {
         <STRING> "}"                   { if self.interpolation_depth > 0 {
                                             self.interpolation_depth -= 1;
                                             self.cond = YYC_STRING;
-                                            return self.token(TokenKind::RBrace)
+                                            return self.token(TokenKind::RightBrace)
                                         } else {
                                             return self.error(LexerError::UnmatchedInterpolation(UnmatchedInterpolation {span: self.span(), missing: MissingBrace::Left}))
                                         }
                                        }
         <STRING> [^"\\{\\}]+           { return self.token(TokenKind::StringLiteral) }
         <STRING> "\\" .                { return self.token(TokenKind::StringLiteral); }
-        <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LBrace) }
+        <STRING> "{"                   => INIT { self.interpolation_depth += 1; return self.token(TokenKind::LeftBrace) }
         // string end
         <STRING> "\""                  => INIT { return self.token(TokenKind::StringInterpolationEnd) }
         
@@ -129,17 +129,17 @@ impl<'src> Lexer<'src> {
         <INIT> "_"                     { return self.token(TokenKind::Underscore) }
 
         // Identifiers
-        <INIT> identifier              { return self.token(TokenKind::Ident) }
+        <INIT> identifier              { return self.token(TokenKind::Identifier) }
 
         // Structural
         <INIT> ":"                     { return self.token(TokenKind::Colon) }
         <INIT> ";"                     { return self.token(TokenKind::Semicolon) }
-        <INIT> "("                     { return self.token(TokenKind::LParen) }
-        <INIT> ")"                     { return self.token(TokenKind::RParen) }
-        <INIT> "{"                     { return self.token(TokenKind::LBrace) }
-        <INIT> "}"                     { if self.interpolation_depth > 0 { self.cond = YYC_STRING; self.interpolation_depth -= 1; }; return self.token(TokenKind::RBrace) }
-        <INIT> "["                     { return self.token(TokenKind::LBracket) }
-        <INIT> "]"                     { return self.token(TokenKind::RBracket) }
+        <INIT> "("                     { return self.token(TokenKind::LeftParenthesis) }
+        <INIT> ")"                     { return self.token(TokenKind::RightParenthesis) }
+        <INIT> "{"                     { return self.token(TokenKind::LeftBrace) }
+        <INIT> "}"                     { if self.interpolation_depth > 0 { self.cond = YYC_STRING; self.interpolation_depth -= 1; }; return self.token(TokenKind::RightBrace) }
+        <INIT> "["                     { return self.token(TokenKind::LeftBracket) }
+        <INIT> "]"                     { return self.token(TokenKind::RightBracket) }
         <INIT> ","                     { return self.token(TokenKind::Comma) }
         <INIT> "."                     { return self.token(TokenKind::Dot) }
 
