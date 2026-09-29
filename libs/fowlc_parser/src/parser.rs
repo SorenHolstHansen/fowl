@@ -375,7 +375,7 @@ impl<'src> Parser<'src> {
                 self.parse_expression(0).emit_ok();
             }
             _ => {
-                self.parse_expression_statement();
+                self.parse_expression_statement().emit_ok();
             }
         }
 

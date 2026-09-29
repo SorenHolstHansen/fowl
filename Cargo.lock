@@ -138,11 +138,10 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
+ "fowlc_common",
  "fowlc_hir",
- "fowlc_lexer",
  "fowlc_manifest",
  "fowlc_package_manager",
- "fowlc_parser",
  "fowlc_span",
  "semver",
  "yansi",
@@ -158,6 +157,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fowlc_common"
+version = "0.0.1"
+
+[[package]]
 name = "fowlc_error"
 version = "0.0.1"
 dependencies = [
@@ -169,9 +172,11 @@ dependencies = [
 name = "fowlc_hir"
 version = "0.0.1"
 dependencies = [
+ "fowlc_common",
  "fowlc_lexer",
  "fowlc_package_manager",
  "fowlc_parser",
+ "syntree",
  "walkdir",
 ]
 

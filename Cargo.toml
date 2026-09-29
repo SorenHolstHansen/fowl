@@ -16,6 +16,7 @@ authors = ["Søren Holst Hansen"]
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+fowlc_common = { path = "libs/fowlc_common" }
 fowlc_error = { path = "libs/fowlc_error" }
 fowlc_hir = { path = "libs/fowlc_hir" }
 fowlc_manifest = { path = "libs/fowlc_manifest" }

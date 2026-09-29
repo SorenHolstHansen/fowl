@@ -1,7 +1,7 @@
 use fowlc_span::Span;
 
 use crate::{Token, lexer_error::LexerError, lexing::YYC_INIT, token::TokenKind};
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, io::Write, path::Path};
 
 #[derive(Clone)]
 pub struct Lexer<'src> {
@@ -132,5 +132,34 @@ impl<'src> Lexer<'src> {
 
     pub(crate) fn token_text(&self) -> &'src str {
         &self.input[self.token..self.cursor]
+    }
+}
+
+impl<'src> Lexer<'src> {
+    pub fn print<O>(mut self, mut o: O) -> Result<(), std::io::Error>
+    where
+        O: Write,
+    {
+        loop {
+            let next = self.next();
+            match next {
+                Ok(t) => {
+                    writeln!(
+                        o,
+                        "{:?}@{}..{} {:?}",
+                        t.kind,
+                        t.span.start(),
+                        t.span.end(),
+                        &self.input[t.span.start()..t.span.end()]
+                    )?;
+                    if t.kind == TokenKind::Eof {
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    writeln!(o, "ERR")?;
+                }
+            }
+        }
     }
 }

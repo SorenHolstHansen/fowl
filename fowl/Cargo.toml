@@ -11,11 +11,11 @@ license.workspace = true
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6", features = ["derive"] }
+fowlc_common = { workspace = true }
 fowlc_hir = { workspace = true }
 fowlc_manifest = { workspace = true }
-fowlc_lexer = { workspace = true }
 fowlc_package_manager = { workspace = true }
-fowlc_parser = { workspace = true }
 fowlc_span = { workspace = true }
-yansi = "1.0.1"
 semver = "1.0.28"
+yansi = "1.0.1"
+

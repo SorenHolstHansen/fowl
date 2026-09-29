@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::{Parser as ClapParser, Subcommand};
-use fowlc_lexer::Lexer;
 use fowlc_manifest::{Manifest, ManifestDependency, PathDependency};
 use fowlc_package_manager::Package;
-use fowlc_parser::{Parser, print_with_source};
 use semver::Version;
 use std::{
     path::{Path, PathBuf},
@@ -18,19 +16,31 @@ pub struct FowlCli {
     command: Command,
 }
 
-#[derive(Debug, ClapParser)]
+#[derive(Debug, Clone, ClapParser)]
 pub struct BuildOptions {
     #[arg(long, global = true)]
-    /// Dump the token stream before parsing.
-    dump_tokens: bool,
+    /// Dump the token stream of the specified file before parsing.
+    /// e.g. `--dump-tokens src/my_file.fo`
+    dump_tokens: Option<String>,
 
     #[arg(long, global = true)]
-    /// Dump the parsed AST before code generation.
-    dump_ast: bool,
+    /// Dump the parsed AST of the specified file before code generation.
+    /// e.g. `--dump-ast src/my_file.fo`
+    dump_ast: Option<String>,
 
     #[arg(long, global = true)]
     /// Target triple for cross-compilation (e.g., wasm32-unknown-unknown, thumbv7m-none-eabi)
     target: Option<String>,
+}
+
+impl From<BuildOptions> for fowlc_common::BuildOptions {
+    fn from(value: BuildOptions) -> Self {
+        fowlc_common::BuildOptions {
+            dump_tokens: value.dump_tokens,
+            dump_ast: value.dump_ast,
+            target: value.target,
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -43,7 +53,7 @@ enum Command {
 #[command(name = "run", about = "Build and run a fowl project", long_about = None)]
 struct RunCommand {
     #[command(flatten)]
-    pub build: BuildOptions,
+    pub build_options: BuildOptions,
 }
 
 impl RunCommand {
@@ -76,6 +86,7 @@ impl RunCommand {
             },
         ];
         let largest_dep_name = packages.iter().map(|p| p.name.len()).max().unwrap();
+        let build_options: fowlc_common::BuildOptions = self.build_options.into();
         for package in packages {
             println!(
                 "[{}] {name:width$} v{version}",
@@ -84,17 +95,8 @@ impl RunCommand {
                 version = package.version,
                 width = largest_dep_name
             );
-            fowlc_hir::lower_to_hir(package);
+            fowlc_hir::lower_to_hir(package, &build_options);
         }
-        // let path = cwd.join("src/main.fo");
-        // let src_main = std::fs::read_to_string(&path)?;
-        // let lexer = Lexer::new(&src_main, &path);
-        // let parser = Parser::new(lexer);
-        // let tree = parser.parse();
-        // let mut s = Vec::new();
-        // print_with_source(&mut s, &tree, &src_main).unwrap();
-        // let s = String::from_utf8(s).unwrap();
-        // eprintln!("{s}");
 
         println!(
             "[{}] in {:.2}s",
