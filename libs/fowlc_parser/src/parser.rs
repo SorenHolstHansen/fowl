@@ -75,13 +75,27 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_ident(&mut self) {
-        self.expect_token(TokenKind::Identifier).emit_ok();
+        let t = self.peek_token();
+        match t.kind {
+            TokenKind::Identifier(_) => {
+                self.next_token();
+                self.tree.token(t.kind, t.span.len()).unwrap();
+            }
+            _ => {
+                crate::errors::SyntaxError {
+                    span: t.span,
+                    expected: format!("'{}'", t.kind).into(),
+                }
+                .into_diagnostic()
+                .emit();
+            }
+        }
     }
 
     fn parse_type(&mut self) -> Result<(), Diagnostic<'src>> {
         match self.peek_token() {
             Token {
-                kind: TokenKind::Identifier,
+                kind: TokenKind::Identifier(_),
                 span,
             } => {
                 // Skip the peeked ident
@@ -165,7 +179,7 @@ impl<'src> Parser<'src> {
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
             }
-            TokenKind::Identifier => {
+            TokenKind::Identifier(_) => {
                 self.parse_ident();
                 self.expect_token(TokenKind::Colon)?;
                 self.parse_type()?;
@@ -230,7 +244,7 @@ impl<'src> Parser<'src> {
             .emit_ok();
     }
 
-    fn parse_prefix_expression(&mut self, precedence: u8) -> Result<(), Diagnostic<'src>> {
+    fn parse_prefix_expression(&mut self, _precedence: u8) -> Result<(), Diagnostic<'src>> {
         let token = self.peek_token();
 
         match token.kind {
@@ -253,7 +267,7 @@ impl<'src> Parser<'src> {
             TokenKind::BoolLiteral => {
                 self.expect_token(TokenKind::BoolLiteral)?;
             }
-            TokenKind::Identifier => {
+            TokenKind::Identifier(_) => {
                 self.parse_ident();
                 self.parse_ident_expression();
             }
@@ -363,7 +377,7 @@ impl<'src> Parser<'src> {
                 self.tree.token(TokenKind::Let, 3).unwrap();
 
                 self.eat_if_token(TokenKind::Mut);
-                self.expect_token(TokenKind::Identifier).emit_ok();
+                self.parse_ident();
                 self.expect_token(TokenKind::Equal).emit_ok();
                 self.parse_expression(0).emit_ok();
             }

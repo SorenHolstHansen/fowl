@@ -1,5 +1,5 @@
 [package]
-name = "fowlc_lexer"
+name = "fowlc_interner"
 repository.workspace = true
 readme.workspace = true
 version.workspace = true
@@ -9,6 +9,3 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-fowlc_error = { workspace = true }
-fowlc_interner = { workspace = true }
-fowlc_span = { workspace = true }

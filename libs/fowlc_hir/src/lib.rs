@@ -5,10 +5,10 @@ use fowlc_lexer::{Lexer, TokenKind};
 use fowlc_package_manager::Package;
 use fowlc_parser::{
     Parser,
-    ast::{self as parser_ast, AstChildren, AstNode, Declaration},
+    ast::{self as parser_ast, AstChildren, Declaration},
     print_with_source,
 };
-use syntree::{FlavorDefault, Node, Tree};
+use syntree::{FlavorDefault, Tree};
 use walkdir::WalkDir;
 
 pub fn lower_to_hir(package: Package, build_options: &BuildOptions) {

@@ -10,8 +10,9 @@ license.workspace = true
 
 [dependencies]
 fowlc_common = { workspace = true }
-fowlc_package_manager = { workspace = true }
+fowlc_interner = { workspace = true }
 fowlc_lexer = { workspace = true }
+fowlc_package_manager = { workspace = true }
 fowlc_parser = { workspace = true }
 walkdir = "2.5.0"
 syntree = "0.18.0"

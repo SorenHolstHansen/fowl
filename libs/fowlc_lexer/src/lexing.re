@@ -129,7 +129,7 @@ impl<'src> Lexer<'src> {
         <INIT> "_"                     { return self.token(TokenKind::Underscore) }
 
         // Identifiers
-        <INIT> identifier              { return self.token(TokenKind::Identifier) }
+        <INIT> identifier              { return self.ident() }
 
         // Structural
         <INIT> ":"                     { return self.token(TokenKind::Colon) }

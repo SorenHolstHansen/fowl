@@ -1,3 +1,4 @@
+use fowlc_interner::InternedStr;
 use fowlc_lexer::TokenKind;
 use syntree::{FlavorDefault, Node, node::Children};
 
@@ -58,16 +59,13 @@ impl<'a> AstNode<'a> for Visibility {
 }
 
 pub struct Identifier {
-    inner: String,
+    inner: InternedStr,
 }
 
 impl<'a> AstNode<'a> for Identifier {
     fn cast(node: Node<'a, TokenKind, FlavorDefault>) -> Option<Self> {
         match node.value() {
-            TokenKind::Identifier => {
-                let a = node.children().next();
-                todo!()
-            }
+            TokenKind::Identifier(i) => Some(Identifier { inner: i }),
             _ => None,
         }
     }

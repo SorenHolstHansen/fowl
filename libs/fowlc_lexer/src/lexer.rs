@@ -1,3 +1,4 @@
+use fowlc_interner::InternedStr;
 use fowlc_span::Span;
 
 use crate::{Token, lexer_error::LexerError, lexing::YYC_INIT, token::TokenKind};
@@ -76,6 +77,11 @@ impl<'src> Lexer<'src> {
         Err(error)
     }
 
+    pub(crate) fn ident(&mut self) -> Result<Token<'src>, LexerError<'src>> {
+        let interned_str = InternedStr::new(self.token_text());
+        self.token(TokenKind::Identifier(interned_str))
+    }
+
     pub(crate) fn token(&mut self, kind: TokenKind) -> Result<Token<'src>, LexerError<'src>> {
         // Add semicolons based on go-like heuristics
         let res = Ok(Token {
@@ -103,7 +109,7 @@ impl<'src> Lexer<'src> {
                 | TokenKind::Break
                 | TokenKind::Continue
                 | TokenKind::None
-                | TokenKind::Identifier
+                | TokenKind::Identifier(_)
                 | TokenKind::IntegerLiteral
                 | TokenKind::FloatLiteral
                 | TokenKind::BoolLiteral

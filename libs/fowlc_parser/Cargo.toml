@@ -10,6 +10,7 @@ license.workspace = true
 
 [dependencies]
 fowlc_error = { workspace = true }
+fowlc_interner = { workspace = true }
 fowlc_lexer = { workspace = true }
 fowlc_span = { workspace = true }
 syntree = "0.18.0"

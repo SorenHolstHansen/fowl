@@ -173,6 +173,7 @@ name = "fowlc_hir"
 version = "0.0.1"
 dependencies = [
  "fowlc_common",
+ "fowlc_interner",
  "fowlc_lexer",
  "fowlc_package_manager",
  "fowlc_parser",
@@ -181,10 +182,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fowlc_interner"
+version = "0.0.1"
+
+[[package]]
 name = "fowlc_lexer"
 version = "0.0.1"
 dependencies = [
  "fowlc_error",
+ "fowlc_interner",
  "fowlc_span",
 ]
 
@@ -212,6 +218,7 @@ name = "fowlc_parser"
 version = "0.0.1"
 dependencies = [
  "fowlc_error",
+ "fowlc_interner",
  "fowlc_lexer",
  "fowlc_span",
  "syntree",

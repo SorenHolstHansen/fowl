@@ -627,7 +627,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
             }
-            10 => { return self.token(TokenKind::Identifier) },
+            10 => { return self.ident() },
             11 => { return self.token(TokenKind::Percent) },
             12 => { return self.token(TokenKind::LeftParenthesis) },
             13 => { return self.token(TokenKind::RightParenthesis) },

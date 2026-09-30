@@ -1,3 +1,4 @@
+use fowlc_interner::InternedStr;
 use fowlc_span::Span;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -55,7 +56,7 @@ pub enum TokenKind {
     Self_,
 
     /// Identifier
-    Identifier,
+    Identifier(InternedStr),
 
     // Literals
     /// Int literal, the str kept as it might parse differently based on the desired int type
@@ -188,7 +189,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::On => write!(f, "on"),
             TokenKind::Impl => write!(f, "impl"),
             TokenKind::Self_ => write!(f, "self"),
-            TokenKind::Identifier => write!(f, "identifier"),
+            TokenKind::Identifier(_) => write!(f, "identifier"),
             TokenKind::IntegerLiteral => write!(f, "int literal"),
             TokenKind::FloatLiteral => write!(f, "float literal"),
             TokenKind::BoolLiteral => write!(f, "bool literal"),
